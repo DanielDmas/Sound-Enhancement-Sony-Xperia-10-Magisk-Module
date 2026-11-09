@@ -143,6 +143,7 @@ sefx_collect() {
     fi
     grep -q '^package:.* uid:[0-9]' "$SEFX_RUN/packages.txt" || { sefx_error 'Unsupported package ownership output.'; return 3; }
     sefx_android_timeout 6 ps -A -o PID,NAME > "$SEFX_RUN/processes.txt" 2>/dev/null || : > "$SEFX_RUN/processes.txt"
+    : > "$SEFX_RUN/unresolved" || return 3
     if ! awk -v user="$SEFX_USER" -v sony="$SONY_PACKAGE" -v meta="$SEFX_RUN/unresolved" -f "$MODDIR/sefx/sessions.awk" \
         "$SEFX_RUN/packages.txt" "$SEFX_RUN/processes.txt" "$SEFX_RUN/audio.txt" > "$SEFX_RUN/parsed.tsv"; then
         sefx_error 'Session parser failed.'; return 3

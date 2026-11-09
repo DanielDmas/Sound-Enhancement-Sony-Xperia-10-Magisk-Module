@@ -7,7 +7,8 @@ builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 class Package(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp=tempfile.TemporaryDirectory();cls.out=pathlib.Path(cls.tmp.name)/'module.zip'
+        (ROOT/'dist').mkdir(exist_ok=True)
+        cls.tmp=tempfile.TemporaryDirectory(dir=ROOT/'dist');cls.out=pathlib.Path(cls.tmp.name)/'module.zip'
         cls.result=builder.build(cls.out)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
@@ -27,7 +28,7 @@ class Package(unittest.TestCase):
     def test_module_identity_is_an_upgrade_not_a_second_module(self):
         with zipfile.ZipFile(self.out) as z:
             self.assertIn('id=SoundEnhancement\n',z.read('module.prop').decode())
-            self.assertIn('versionCode=20001\n',z.read('module.prop').decode())
+            self.assertIn('versionCode=20002\n',z.read('module.prop').decode())
     def test_critical_executables_have_executable_mode(self):
         with zipfile.ZipFile(self.out) as z:
             for name in ['system/bin/sefx','action.sh','service.sh','META-INF/com/google/android/update-binary']:
@@ -54,6 +55,6 @@ class Package(unittest.TestCase):
     def test_installer_has_explicit_12l_lilac_guard(self):
         s=(ROOT/'customize.sh').read_text()
         self.assertIn('"$(getprop ro.product.device)" != lilac',s);self.assertIn('"$API" != 32',s)
-        self.assertIn('No compatible 32-bit audio HAL was found',s)
+        self.assertIn('No compatible running 32-bit audio HAL was found',s)
 
 if __name__=='__main__':unittest.main()
