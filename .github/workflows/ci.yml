@@ -18,6 +18,6 @@ jobs:
       - name: Save installable ZIP and SHA-256
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: SoundEnhancement-v2.0.0-rc.2-lilac-12L
+          name: SoundEnhancement-v2.0.0-rc.3-lilac-12L
           path: dist/*
           if-no-files-found: error

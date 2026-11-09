@@ -1,5 +1,7 @@
 # RC2 engineering audit and gap map
 
+RC3 follow-up: [changes, new verification and current remaining gates](RC3.md). The sections below preserve the RC2 assessment.
+
 Date: 9 November 2026. Target: Xperia XZ1 Compact G8441/lilac, Flamefire
 LineageOS 19.1 / Android 12L API 32, Magisk. Runtime tests pin Magisk 31.1.
 Other ROMs, architectures and Magisk versions are not qualified by this audit.

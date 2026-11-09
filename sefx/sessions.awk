@@ -35,22 +35,30 @@ FILENAME == ARGV[3] {
     if(usage=="" || content=="") {bad=1;next}
     if(int(uid/100000)!=user || uid%100000<10000) next
     if(usage!="USAGE_MEDIA" && usage!="1" && usage!="USAGE_GAME" && usage!="14") next
-    if(length(uid)>10 || uid+0>2147483647 || length(pid)>10 || pid+0>2147483647 || pid+0<1 || session!~/^[1-9][0-9]*$/ || length(session)>10 || session+0>2147483647) {unresolved++;next}
-    if(device!~/^[0-9]+$/) device="0"
+    pkg=process[pid]
+    if(!(uid SUBSEP pkg in owns)) {if(count[uid]!=1) {unresolved++;unknown[uid]=1;next};pkg=only[uid]}
+    if(pkg==sony || pkg=="com.sonymobile.audioutil") next
+    if(length(uid)>10 || uid+0>2147483647 || length(pid)>10 || pid+0>2147483647 || pid+0<1 || session!~/^[1-9][0-9]*$/ || length(session)>10 || session+0>2147483647) {unresolved++;unknown[uid]=1;next}
+    if(device!~/^[0-9]+$/ || length(device)>10 || device+0>2147483647) device="0"
     # AudioEffect uses different enum values from AudioAttributes.
     type=0
     if(usage=="USAGE_GAME" || usage=="14") type=2
     else if(content=="CONTENT_TYPE_MOVIE" || content=="3") type=1
     else if(content=="CONTENT_TYPE_SPEECH" || content=="1") type=3
-    pkg=process[pid]
-    if(!(uid SUBSEP pkg in owns)) {if(count[uid]!=1) {unresolved++;next};pkg=only[uid]}
-    if(pkg==sony || pkg=="com.sonymobile.audioutil") next
     key=pkg SUBSEP session
-    if(!(key in rows)) rows[key]=pkg "|" uid "|" pid "|" session "|" type
+    # Stable identity when several tracks share one app/session.
+    if(!(key in rows) || pid+0<rowpid[key]+0) {rows[key]=pkg "|" uid "|" pid "|" session;rowpid[key]=pid}
+    if(type>rowtype[key]+0) rowtype[key]=type
     if(!devices[key SUBSEP device]++) routes[key]=routes[key] (routes[key]!=""?"+":"") device
 }
 END {
     if(bad) exit 3
     if(unresolved && meta!="") print unresolved > meta
-    for(key in rows) print rows[key] "|" routes[key]
+    if(uncertain!="") for(uid in unknown) print uid > uncertain
+    for(key in rows) {
+        n=split(routes[key],route,"+")
+        for(i=2;i<=n;i++) {v=route[i];j=i-1;while(j>0 && route[j]+0>v+0) {route[j+1]=route[j];j--};route[j+1]=v}
+        canonical=route[1];for(i=2;i<=n;i++) canonical=canonical "+" route[i]
+        print rows[key] "|" (rowtype[key]+0) "|" canonical
+    }
 }

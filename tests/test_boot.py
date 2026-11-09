@@ -1,6 +1,9 @@
 import pathlib, shutil, subprocess
 from test_sessions import AndroidFixture, REPO
 class Boot(AndroidFixture):
+    def test_unsupported_target_does_not_spoof_properties_or_restart_audio(self):
+        self.android['props']={'ro.build.version.sdk':'35'};self.save();self.boot(expected=3)
+        self.assertFalse(self.calls('killall'));self.assertFalse(self.calls('resetprop'));self.assertFalse(self.calls('pm'))
     def setUp(self):
         super().setUp();shutil.copyfile(REPO/'service.sh',self.module/'service.sh')
     def boot(self,expected=0):

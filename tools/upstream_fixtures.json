@@ -1,0 +1,16 @@
+[
+  {
+    "name": "audio_effects.xml",
+    "repository": "whatawurst/android_vendor_sony_yoshino-common",
+    "commit": "0fb1f35c79dfe0ed6de189a388431ff60d30213b",
+    "path": "proprietary/vendor/etc/audio_effects.xml",
+    "sha256": "194e7c78fffea480a538457cd60c29f1ef41a2c4625779f5984807374addd8d8"
+  },
+  {
+    "name": "audio_policy_configuration.xml",
+    "repository": "Flamefire/android_device_sony_yoshino-common",
+    "commit": "71d95f043fdb2cfde9e72ffb6cc2af9121f50211",
+    "path": "config/audio_policy/audio_policy_configuration.xml",
+    "sha256": "0240d71ac8dd3b8f5a9fbe70ed8f6586c6f446d426f7f16c2e00c81fb769b022"
+  }
+]
