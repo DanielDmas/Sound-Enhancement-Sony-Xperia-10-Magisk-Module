@@ -1,21 +1,23 @@
 [ ! "$MODPATH" ] && MODPATH=${0%/*}
+set -e
 
 # destination
 [ ! "$libdir" ] && libdir=/vendor
-MODAECS=`find $MODPATH -type f -name *audio*effects*.conf`
-MODAEXS=`find $MODPATH -type f -name *audio*effects*.xml`
-MODAPS=`find $MODPATH -type f -name *policy*.conf -o -name *policy*.xml`
-MODAPXS=`find $MODPATH -type f -name *policy*.xml`
+MODAECS=`find "$MODPATH" -type f -name '*audio*effects*.conf'`
+MODAEXS=`find "$MODPATH" -type f -name '*audio*effects*.xml'`
+MODAPS=`find "$MODPATH" -type f \( -name '*policy*.conf' -o -name '*policy*.xml' \)`
+MODAPXS=`find "$MODPATH" -type f -name '*policy*.xml'`
 
 # function
 archdir() {
+PAYLOAD=${SEFX_PAYLOAD_ROOT:-$MODPATH}
 if [ -f $libdir/lib/soundfx/$LIB ]\
-|| [ -f $MODPATH/system$libdir/lib/soundfx/$LIB ]\
-|| [ -f $MODPATH$libdir/lib/soundfx/$LIB ]; then
+|| [ -f $PAYLOAD/system$libdir/lib/soundfx/$LIB ]\
+|| [ -f $PAYLOAD$libdir/lib/soundfx/$LIB ]; then
   ARCHDIR=/lib
 elif [ -f $libdir/lib64/soundfx/$LIB ]\
-|| [ -f $MODPATH/system$libdir/lib64/soundfx/$LIB ]\
-|| [ -f $MODPATH$libdir/lib64/soundfx/$LIB ]; then
+|| [ -f $PAYLOAD/system$libdir/lib64/soundfx/$LIB ]\
+|| [ -f $PAYLOAD$libdir/lib64/soundfx/$LIB ]; then
   ARCHDIR=/lib64
 else
   unset ARCHDIR
@@ -41,6 +43,14 @@ sed -i 's|removed {}||g' $MODAEC
 sed -i '/^[[:space:]]*$/d' $MODAEC
 }
 remove_xml() {
+if [ "$NAME" = sonyeffect ]; then
+  if ! awk -f "$MODPATH/sefx/proxy.awk" "$MODAEX" > "$MODAEX.proxy.$"; then
+    rm -f "$MODAEX.proxy.$"
+    echo "Unsupported/unterminated proxy configuration: $MODAEX" >&2
+    return 1
+  fi
+  mv -f "$MODAEX.proxy.$" "$MODAEX" || return 1
+fi
 for RMV in $RMVS; do
   sed -i "s|\"$RMV\"|\"removed\"|g" $MODAEX
 done

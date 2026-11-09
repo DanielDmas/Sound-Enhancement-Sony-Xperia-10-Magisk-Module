@@ -196,11 +196,11 @@ if ! echo "$ABILIST" | grep -q $NAME2; then
    $MODPATH/system*/vendor/lib
   ui_print " "
 fi
-if ! file /*/bin/hw/*audio* | grep -q 32-bit; then
+if ! audio_hal_32bit; then
   ui_print "! Sound Enhancement uses 32 bit audio service only"
   ui_print "  But this ROM uses 64 bit audio service"
   ui_print "  Sound Enhancement will not be working"
-  abort "No compatible 32-bit audio HAL was found. Keep the previous module/ROM and save this log."
+  abort "No compatible running 32-bit audio HAL was found. Keep the previous module/ROM and save this log."
   if [ $DOLBY == true ]; then
     ui_print "  But you can still use the Dolby Atmos"
   fi
@@ -1383,8 +1383,8 @@ fi
 
 # run
 MODSYSTEM=/system
-. $MODPATH/copy.sh
-. $MODPATH/.aml.sh
+MODPATH="$MODPATH" MODSYSTEM="$MODSYSTEM" sh "$MODPATH/sefx/configure.sh" || abort "Audio configuration failed; no incomplete staged module will be accepted."
+ui_print "- Installation staged. Reboot normally before using Magisk Action."
 
 # unmount
 unmount_mirror

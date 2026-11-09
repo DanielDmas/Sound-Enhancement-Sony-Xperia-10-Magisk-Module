@@ -5,16 +5,23 @@ if [ -x /data/adb/magisk/busybox ] && [ "${SEFX_SHELL:-}" != magisk_busybox ]; t
     exec /data/adb/magisk/busybox sh "$0" "$@"
 fi
 SEFX_SELF=$(readlink -f "$0")
+if [ "$(id -u)" != 0 ]; then printf 'Root required: use Magisk Action or su -c sefx.\n' >&2; exit 1; fi
 MODDIR=${SEFX_SELF%/system/bin/sefx}
 [ -f "$MODDIR/sefx/lib.sh" ] || MODDIR=/data/adb/modules/SoundEnhancement
 [ -f "$MODDIR/sefx/lib.sh" ] || { printf 'Module files missing.\n' >&2; exit 3; }
 . "$MODDIR/sefx/lib.sh"
-sefx_init || exit $?
 trap 'sefx_cleanup' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+sefx_init || exit $?
 case "${1:-open}" in
-    open) sefx_sync manual || exit $?; sefx_panel "${2:-}" || exit $?; sefx_start_watch ;;
+    open)
+        printf 'Runtime: %s\n' "$SEFX_RUNTIME_VERSION"
+        sefx_ready || exit $?
+        sefx_sync manual; open_result=$?
+        if [ "$open_result" = 0 ]; then sefx_panel "${2:-}"; open_result=$?; fi
+        sefx_start_watch || { [ "$open_result" != 0 ] || open_result=3; }
+        exit "$open_result" ;;
     attach) sefx_sync manual ;;
     sync) sefx_sync auto ;;
     refresh) sefx_sync repair ;;
@@ -23,6 +30,7 @@ case "${1:-open}" in
     report) sefx_diagnostics export ;;
     auto) sefx_auto "${2:-}" ;;
     watch) sefx_watch ;;
+    daemon) sefx_daemon ;;
     help|-h|--help)
         printf '%s\n' 'sefx            Attach to active media and open Sony settings' \
             'sefx open PKG   Select one active player when several are playing' \

@@ -29,10 +29,13 @@ FILENAME == ARGV[3] {
         else if(token~/^usage=/) {usage=token;sub(/^usage=/,"",usage)}
         else if(token~/^content=/) {content=token;sub(/^content=/,"",content)}
     }
+    if(uid!~/^[0-9]+$/ || pid!~/^[0-9]+$/ || state=="") {bad=1;next}
+    if(state!~/^(started|paused|stopped|released|idle|unknown|0|1|2|3|4|5)$/) {bad=1;next}
     if(state!="started" && state!="2") next
-    if(uid!~/^[0-9]+$/ || pid!~/^[0-9]+$/ || session!~/^[0-9]+$/ || session+0<1) next
+    if(usage=="" || content=="") {bad=1;next}
     if(int(uid/100000)!=user || uid%100000<10000) next
     if(usage!="USAGE_MEDIA" && usage!="1" && usage!="USAGE_GAME" && usage!="14") next
+    if(length(uid)>10 || uid+0>2147483647 || length(pid)>10 || pid+0>2147483647 || pid+0<1 || session!~/^[1-9][0-9]*$/ || length(session)>10 || session+0>2147483647) {unresolved++;next}
     if(device!~/^[0-9]+$/) device="0"
     # AudioEffect uses different enum values from AudioAttributes.
     type=0
@@ -40,10 +43,14 @@ FILENAME == ARGV[3] {
     else if(content=="CONTENT_TYPE_MOVIE" || content=="3") type=1
     else if(content=="CONTENT_TYPE_SPEECH" || content=="1") type=3
     pkg=process[pid]
-    if(!(uid SUBSEP pkg in owns)) {if(count[uid]!=1) next;pkg=only[uid]}
+    if(!(uid SUBSEP pkg in owns)) {if(count[uid]!=1) {unresolved++;next};pkg=only[uid]}
     if(pkg==sony || pkg=="com.sonymobile.audioutil") next
     key=pkg SUBSEP session
     if(!(key in rows)) rows[key]=pkg "|" uid "|" pid "|" session "|" type
     if(!devices[key SUBSEP device]++) routes[key]=routes[key] (routes[key]!=""?"+":"") device
 }
-END {for(key in rows) print rows[key] "|" routes[key]}
+END {
+    if(bad) exit 3
+    if(unresolved && meta!="") print unresolved > meta
+    for(key in rows) print rows[key] "|" routes[key]
+}

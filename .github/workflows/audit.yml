@@ -13,6 +13,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Verify actual Magisk BusyBox and static analysis tools
         run: python3 tools/audit_toolchain.py
+      - name: Gate maintained scripts on ShellCheck warnings
+        run: audit-tools/shellcheck -s busybox -S warning action.sh service.sh system/bin/sefx sefx/lib.sh sefx/configure.sh copy.sh uninstall.sh
+      - name: Exercise actual Magisk BusyBox with Android command fixtures
+        run: sudo env SEFX_BUSYBOX="$PWD/audit-tools/busybox" python3 -m unittest discover -s tests -v
       - name: Keep reproducible audit tools and diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
