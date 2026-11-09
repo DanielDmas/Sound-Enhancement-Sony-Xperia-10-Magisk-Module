@@ -1,5 +1,7 @@
 # RC2 engineering audit and gap map
 
+**Current fix:** [RC4 command transport regression, old-version comparison and installation](RC4.md). RC3 failed package ownership on the target phone; its previous fixture passes missed the Binder FD boundary.
+
 RC3 follow-up: [changes, new verification and current remaining gates](RC3.md). The sections below preserve the RC2 assessment.
 
 Date: 9 November 2026. Target: Xperia XZ1 Compact G8441/lilac, Flamefire

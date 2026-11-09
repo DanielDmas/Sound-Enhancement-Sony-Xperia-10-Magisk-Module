@@ -31,8 +31,9 @@ class AndroidFixture(unittest.TestCase):
     def config(self,text):
         tmp=self.state/'config.next';tmp.write_text(text);tmp.replace(self.state/'config')
     def runfx(self,*args,expected=0):
-        r=subprocess.run(['sh',str(self.module/'system/bin/sefx'),*args],env=self.env,text=True,capture_output=True,timeout=15)
+        r=subprocess.run(self.command(*args),env=self.env,text=True,capture_output=True,timeout=15)
         self.assertEqual(r.returncode,expected,r.stdout+r.stderr);return r
+    def command(self,*args):return ['sh',str(self.module/'system/bin/sefx'),*args]
     def calls(self,kind=None):
         p=self.root/'calls.jsonl';xs=[json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
         return [x for x in xs if kind is None or x[0]==kind]
