@@ -1,5 +1,21 @@
 # Sony Sound Enhancement: Android 12L session manager
 
+## Download v2.0.0-rc.1 for Xperia XZ1 Compact / Android 12L
+
+**[Open the verified GitHub download build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)**
+
+1. Sign in to GitHub and open the link above.
+2. In the run's **Artifacts** section, click **`SoundEnhancement-v2.0.0-rc.1-lilac-12L`**.
+3. Extract GitHub's downloaded outer archive once. Inside are:
+   - **`SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip`** - install this ZIP in Magisk, keeping it packed.
+   - **`SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip.sha256`** - checksum for that module ZIP.
+
+The outer GitHub artifact archive is a download container. Magisk needs the **inner module ZIP**. GitHub's **Code > Download ZIP** downloads source files and is not the installable module.
+
+The linked build passed **79 tests**, verified **55 unchanged upstream binary containers**, and reproduced the locally tested module ZIP exactly. It targets **G8441/lilac, Android 12L / API 32, with Magisk**. It is a candidate awaiting real-phone audio validation.
+
+GitHub lists this pinned artifact's expiry as **7 February 2027**. Save both inner files locally; [the Actions page](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions) lists other builds if the pinned artifact becomes unavailable. [GitHub's artifact download instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts) explain the sign-in and Artifacts steps.
+
 This fork repairs the activation/lifecycle scripts around Rei Ryuki's Xperia 10 Sony audio port. The installable candidate is **v2.0.0-rc.1**, for **Sony Xperia XZ1 Compact G8441 / lilac, Android 12L / API 32, Magisk**. Its Sony apps, framework JARs and native libraries are unchanged. This is a root module, not a ROM or a DRM-key restore.
 
 The previous local manual-launch version worked initially on a G8441, then sometimes opened controls without changing the sound. This fork fixes script defects that can cause incorrect or lost session attachment. No physical Xperia is connected for acoustic verification of the repaired build; automated tests and a successful Android intent are not proof of audible DSP processing.
