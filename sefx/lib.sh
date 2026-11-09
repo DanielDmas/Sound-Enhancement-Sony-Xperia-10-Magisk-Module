@@ -200,11 +200,12 @@ sefx_sync() {
     sync_context="user=$SEFX_USER audio=$sync_audio sony=$sync_sony route=$sync_route boot=$sync_boot"
     sync_before=$(cat "$SEFX_STATE_DIR/context" 2>/dev/null)
     sync_stamp=$(sefx_tick); sync_last=$(cat "$SEFX_STATE_DIR/refreshed_at" 2>/dev/null)
-    case "$sync_last" in ''|*[!0-9]*) sync_last=0 ;; esac
-    [ "${#sync_last}" -le 10 ] || sync_last=0
-    case "$sync_last" in 0|[1-9]*) ;; *) sync_last=0 ;; esac
+    sync_time_valid=1
+    case "$sync_last" in ''|*[!0-9]*) sync_last=0; sync_time_valid=0 ;; esac
+    [ "${#sync_last}" -le 10 ] || { sync_last=0; sync_time_valid=0; }
+    case "$sync_last" in 0|[1-9]*) ;; *) sync_last=0; sync_time_valid=0 ;; esac
     sync_force=0
-    if [ "$sync_mode" != auto ] || [ "$sync_context" != "$sync_before" ] || [ "$sync_stamp" -lt "$sync_last" ] || [ "$((sync_stamp-sync_last))" -ge "$SEFX_REFRESH" ]; then sync_force=1; fi
+    if [ "$sync_time_valid" = 0 ] || [ "$sync_mode" != auto ] || [ "$sync_context" != "$sync_before" ] || [ "$sync_stamp" -lt "$sync_last" ] || [ "$((sync_stamp-sync_last))" -ge "$SEFX_REFRESH" ]; then sync_force=1; fi
     sync_result=0; sync_sent=0
     : > "$SEFX_RUN/closed-packages.txt"
     : > "$SEFX_RUN/failed-packages.txt"
