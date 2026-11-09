@@ -1,4 +1,15 @@
 # function
+audio_hal_32bit() {
+    audio_ps=${SEFX_ANDROID_BIN:-/system/bin}/ps
+    [ -x "$audio_ps" ] || audio_ps=$(command -v ps)
+    audio_pids=$("$audio_ps" -A -o PID,NAME | awk '$1~/^[0-9]+$/ && $2~/(android.hardware.audio[.@]|vendor.*audio.*service|audio-hal)/ {print $1}')
+    audio_compatible=1
+    for audio_pid in $audio_pids; do
+        audio_header=$(od -An -tx1 -N5 "${SEFX_PROC_DIR:-/proc}/$audio_pid/exe" 2>/dev/null | tr -d ' \n')
+        case "$audio_header" in 7f454c4601) audio_compatible=0 ;; esac
+    done
+    return "$audio_compatible"
+}
 remove_cache() {
 FILES=`find $MODPATH -type f -name *.apk | sed 's|.apk||g'`
 APPS=`for FILE in $FILES; do basename $FILE; done`
@@ -52,16 +63,19 @@ get_device() {
 DEV="`cat /proc/self/mountinfo | awk '{ if ( $5 == "'$1'" ) print $3 }' | head -1 | sed 's/:/ /g'`"
 }
 mount_mirror() {
+get_device "$1"
+set -- "$1" "$2" $DEV
+[ "$#" = 4 ] || return 1
+case "$3:$4" in *[!0-9:]*|0:*) return 1 ;; esac
 RAN="`head -c6 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9'`"
 while [ -e /dev/$RAN ]; do
   RAN="`head -c6 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9'`"
 done
-mknod /dev/$RAN b `get_device "$1"; echo $DEV`
+mknod /dev/$RAN b "$3" "$4" || return 1
 if mount -t ext4 -o ro /dev/$RAN "$2"\
 || mount -t erofs -o ro /dev/$RAN "$2"\
 || mount -t f2fs -o ro /dev/$RAN "$2"\
 || mount -t auto -o ro /dev/$RAN "$2"; then
-  blockdev --setrw /dev/$RAN
   rm -f /dev/$RAN
   return 0
 fi

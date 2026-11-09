@@ -16,6 +16,7 @@ if name=='am':
  if args==['get-current-user']:finish(str(state.get('user',0)))
  if args and args[0]=='broadcast':
   time.sleep(state.get('am_delay',0))
+  if state.get('close_fail') and 'android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION' in args:finish('Error: CLOSE rejected',1)
   if state.get('am_fail'):finish('Error: java.lang.SecurityException: Permission Denial',state.get('am_exit',0))
   if state.get('am_unconfirmed'):finish('Broadcasting: Intent only')
   finish('Broadcasting: Intent\nBroadcast completed: result=0')
@@ -44,6 +45,8 @@ if name=='getenforce':finish('Enforcing')
 if name=='getprop':finish({'ro.product.device':'lilac','ro.build.version.sdk':'32','sys.boot_completed':'1'}.get(args[0],''))
 if name=='appops':finish('RECORD_AUDIO: allow')
 if name=='logcat':finish('Diagnostic log fixture')
+if name in ['resetprop','killall']:finish('')
+if name=='pm':finish('Permission denied' if state.get('pm_fail') else '',1 if state.get('pm_fail') else 0)
 if name=='nohup':finish('Watcher launch captured by test fake')
 if name=='sleep':
  counter=root/'sleeps'

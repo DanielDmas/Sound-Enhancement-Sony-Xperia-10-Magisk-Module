@@ -1,4 +1,4 @@
-import json, os, pathlib, shutil, subprocess, tempfile, time, unittest
+import fcntl, json, os, pathlib, shutil, subprocess, tempfile, time, unittest
 
 REPO=pathlib.Path(__file__).resolve().parents[1]
 SONY='com.sonyericsson.soundenhancement'
@@ -7,7 +7,7 @@ PLAYER='org.lineageos.eleven'
 def record(uid=10123,pid=2345,sid=77,state='started',device=2,usage='USAGE_MEDIA',content='CONTENT_TYPE_MUSIC',piid=10):
     return f'    AudioPlaybackConfiguration piid:{piid} deviceId:{device} type:android.media.AudioTrack u/pid:{uid}/{pid} state:{state} attr: usage={usage} content={content} flags=0x0 tags= bundle=null sessionId:{sid}\n'
 
-class Sessions(unittest.TestCase):
+class AndroidFixture(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
         self.module=self.root/'module';self.module.mkdir()
@@ -15,7 +15,7 @@ class Sessions(unittest.TestCase):
             q=self.module/p;q.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(REPO/p,q)
         self.bin=self.root/'bin';self.bin.mkdir()
         fake=self.root/'fake.py';shutil.copyfile(REPO/'tests/fake_android.py',fake);fake.chmod(0o755)
-        for c in ['id','am','dumpsys','cmd','ps','pidof','getenforce','getprop','appops','logcat','nohup','sleep']:
+        for c in ['id','am','dumpsys','cmd','ps','pidof','getenforce','getprop','appops','logcat','nohup','sleep','resetprop','killall','pm']:
             (self.bin/c).symlink_to(fake)
         self.state=self.module/'.sefx';self.state.mkdir(mode=0o700)
         self.config('auto=0\n')
@@ -24,7 +24,7 @@ class Sessions(unittest.TestCase):
             'processes':f'PID NAME\n2345 {PLAYER}\n','pids':{'audioserver':'310',SONY:'780'}}
         self.save()
         self.env={**os.environ,'PATH':str(self.bin)+os.pathsep+os.environ['PATH'],
-            'FAKE_ANDROID_ROOT':str(self.root),'SEFX_STATE_DIR':str(self.state)}
+            'FAKE_ANDROID_ROOT':str(self.root),'SEFX_STATE_DIR':str(self.state),'SEFX_ANDROID_BIN':str(self.bin)}
     def tearDown(self):self.tmp.cleanup()
     def save(self):
         target=self.root/'android.json';tmp=self.root/'android.next';tmp.write_text(json.dumps(self.android));tmp.replace(target)
@@ -42,6 +42,8 @@ class Sessions(unittest.TestCase):
     def clearcalls(self):(self.root/'calls.jsonl').write_text('')
     def rows(self):
         r=self.runfx('status');return r.stdout
+
+class Sessions(AndroidFixture):
     def test_music_enum_is_zero(self):
         self.runfx('attach');x=self.broadcasts('OPEN')[0];i=x.index('android.media.extra.CONTENT_TYPE');self.assertEqual(x[i+1],'0')
     def test_movie_enum_is_one(self):
@@ -138,7 +140,7 @@ class Sessions(unittest.TestCase):
         first=subprocess.Popen(['sh',str(self.module/'system/bin/sefx'),'attach'],env=self.env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         try:
             for _ in range(100):
-                if (self.state/'attach.lock/pid').exists():break
+                if self.broadcasts('OPEN'):break
                 time.sleep(0.01)
             self.runfx('attach',expected=5)
             out,err=first.communicate(timeout=10);self.assertEqual(first.returncode,0,out+err);self.assertEqual(len(self.broadcasts('OPEN')),1)
@@ -167,9 +169,13 @@ class Sessions(unittest.TestCase):
     def test_pending_removal_does_not_attach(self):
         (self.module/'remove').touch();self.runfx('attach',expected=3);self.assertFalse(self.broadcasts())
     def test_live_lock_not_stolen(self):
-        d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text(str(os.getpid()));self.runfx('attach',expected=5);self.assertTrue(d.exists());self.assertFalse(self.broadcasts())
+        with (self.state/'attach.flock').open('w') as fd:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.runfx('attach',expected=5);self.assertFalse(self.broadcasts())
+
     def test_dead_lock_recovered(self):
-        d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text('2147483647');self.runfx('attach');self.assertFalse(d.exists())
+        d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text('2147483647');self.runfx('attach');self.assertTrue(d.exists())
+
     def fake_proc(self,boot='boot-A',start='900'):
         proc=self.root/'proc';(proc/'sys/kernel/random').mkdir(parents=True,exist_ok=True)
         (proc/'sys/kernel/random/boot_id').write_text(boot)
@@ -178,20 +184,24 @@ class Sessions(unittest.TestCase):
         self.env['SEFX_PROC_DIR']=str(proc);return proc
     def test_pid_reused_after_crash_does_not_block_refresh(self):
         self.fake_proc();d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text(str(os.getpid()));(d/'token').write_text('old-boot:300')
-        self.runfx('attach');self.assertFalse(d.exists())
-    def test_matching_process_identity_lock_is_respected(self):
+        self.runfx('attach');self.assertTrue(d.exists())
+
+    def test_stale_legacy_pid_metadata_does_not_override_kernel_lock(self):
         self.fake_proc();d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text(str(os.getpid()));(d/'token').write_text('boot-A:900')
-        self.runfx('attach',expected=5);self.assertTrue(d.exists())
+        self.runfx('attach');self.assertTrue(d.exists())
+
     def test_reboot_invalidates_attachment_cache_even_with_same_pids(self):
         proc=self.fake_proc();self.runfx('sync');self.clearcalls();(proc/'sys/kernel/random/boot_id').write_text('boot-B');self.runfx('sync');self.assertEqual(len(self.broadcasts('OPEN')),1)
-    def test_empty_new_lock_not_stolen(self):
-        (self.state/'attach.lock').mkdir();self.runfx('attach',expected=5)
+    def test_unlocked_kernel_lock_file_is_not_mistaken_for_live_lock(self):
+        (self.state/'attach.flock').touch();self.runfx('attach')
+
     def test_old_empty_lock_recovered(self):
         d=self.state/'attach.lock';d.mkdir();os.utime(d,(1,1));self.runfx('attach')
     def test_zero_pid_is_not_a_live_owner(self):
         d=self.state/'attach.lock';d.mkdir();(d/'pid').write_text('0');self.runfx('attach')
     def test_symlink_lock_refused(self):
-        (self.state/'attach.lock').symlink_to(self.root);self.runfx('attach',expected=5)
+        (self.state/'attach.flock').symlink_to(self.root);self.runfx('attach',expected=3)
+
     def test_config_does_not_execute_shell(self):
         sentinel=self.root/'injected';self.config(f'auto=0\ninterval=$(touch {sentinel})\nrefresh_interval=1\n')
         self.runfx('status');self.assertFalse(sentinel.exists())
@@ -209,9 +219,13 @@ class Sessions(unittest.TestCase):
     def test_watch_loop_exits_cleanly_without_recursion(self):
         self.config('auto=1\n');self.android['stop_after']=2;self.save();self.runfx('watch');self.assertFalse((self.state/'watch.lock').exists());self.assertEqual(len(self.broadcasts('OPEN')),1)
     def test_old_empty_watch_lock_recovered(self):
-        self.config('auto=1\n');d=self.state/'watch.lock';d.mkdir();os.utime(d,(1,1));self.android['stop_after']=1;self.save();self.runfx('watch');self.assertFalse(d.exists())
-    def test_fresh_empty_watch_lock_not_stolen(self):
-        self.config('auto=1\n');d=self.state/'watch.lock';d.mkdir();self.runfx('watch',expected=5);self.assertTrue(d.exists())
+        self.config('auto=1\n');d=self.state/'watch.lock';d.mkdir();os.utime(d,(1,1));self.android['stop_after']=1;self.save();self.runfx('watch');self.assertFalse((self.state/'watch.pid').exists())
+
+    def test_live_watch_kernel_lock_not_stolen(self):
+        self.config('auto=1\n')
+        with (self.state/'watch.flock').open('w') as fd:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);self.runfx('watch',expected=5)
+
     def test_watch_does_not_open_user_interface(self):
         self.config('auto=1\n');self.android['stop_after']=1;self.save();self.runfx('watch');self.assertFalse(any(x[1]=='start-activity' for x in self.calls('am')))
     def test_invalid_command(self):self.runfx('nonsense',expected=2)

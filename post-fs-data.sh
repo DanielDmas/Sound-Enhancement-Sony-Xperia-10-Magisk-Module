@@ -1,4 +1,4 @@
-mount -o rw,remount /data
+# Magisk provides a writable module directory; do not remount userdata.
 MODPATH=${0%/*}
 
 # log
@@ -15,9 +15,11 @@ set_perm() {
 }
 set_perm_recursive() {
   find $1 -type d 2>/dev/null | while read dir; do
+    case "$dir" in "$MODPATH/.sefx"|"$MODPATH/.sefx/"*) continue ;; esac
     set_perm $dir $2 $3 $4 $6
   done
   find $1 -type f -o -type l 2>/dev/null | while read file; do
+    case "$file" in "$MODPATH/.sefx"|"$MODPATH/.sefx/"*) continue ;; esac
     set_perm $file $2 $3 $5 $6
   done
 }
@@ -77,7 +79,11 @@ sepolicy_sh
 # Do not remove unrelated modules. Conflicts are reported in diagnostics.
 
 # run
-. $MODPATH/copy.sh
+MODPATH="$MODPATH" MODSYSTEM="$MODSYSTEM" sh "$MODPATH/sefx/configure.sh" || {
+  echo 'Audio config generation failed; previous generated configs retained.' >&2
+  exit 1
+}
+AUD='*audio*effects*.conf -o -name *audio*effects*.xml -o -name *policy*.conf -o -name *policy*.xml'
 
 # conflict
 AML=/data/adb/modules/aml
@@ -91,7 +97,7 @@ if [ -d $ACDB ] && [ ! -f $ACDB/disable ]; then
 fi
 
 # run
-. $MODPATH/.aml.sh
+# Configuration has already been patched in the staging tree.
 
 # directory
 DIR=/data/mediaserver

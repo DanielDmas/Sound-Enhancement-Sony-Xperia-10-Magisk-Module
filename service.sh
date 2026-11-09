@@ -1,10 +1,13 @@
 #!/system/bin/sh
 # One boot initialization, followed by a non-recursive session watcher.
 MODDIR=${0%/*}
-[ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
+[ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$MODDIR/update" ] || exit 0
 umask 077
-mkdir -p "$MODDIR/.sefx"
-chmod 0700 "$MODDIR/.sefx"
+[ ! -L "$MODDIR/.sefx" ] && [ ! -L "$MODDIR/.sefx/boot.log" ] && [ ! -L "$MODDIR/.sefx/boot.previous.log" ] || exit 3
+mkdir -p "$MODDIR/.sefx" && chmod 0700 "$MODDIR/.sefx" || exit 3
+if [ -f "$MODDIR/.sefx/boot.log" ] && [ "$(wc -c < "$MODDIR/.sefx/boot.log")" -gt 65536 ]; then
+    mv -f "$MODDIR/.sefx/boot.log" "$MODDIR/.sefx/boot.previous.log" || exit 3
+fi
 exec >> "$MODDIR/.sefx/boot.log" 2>&1
 printf 'Sony audio boot initialization\n'
 . "$MODDIR/sefx/lib.sh"
@@ -60,10 +63,10 @@ done
 
 # RECORD_AUDIO is a real runtime permission. Do not use the invalid grant-all
 # command, change the user's Magisk denylist, or clear application settings.
-boot_user=$(sefx_timeout 6 cmd activity get-current-user 2>/dev/null)
+boot_user=$(sefx_android_timeout 6 cmd activity get-current-user 2>/dev/null)
 case "$boot_user" in ''|*[!0-9]*) printf 'Cannot determine Android user.\n'; exit 1 ;; esac
-sefx_timeout 8 pm grant --user "$boot_user" com.sonyericsson.soundenhancement android.permission.RECORD_AUDIO || true
-sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement SYSTEM_ALERT_WINDOW allow || true
-sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_IN_BACKGROUND allow || true
-sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_ANY_IN_BACKGROUND allow || true
-exec sh "$MODDIR/system/bin/sefx" watch
+sefx_android_timeout 8 pm grant --user "$boot_user" com.sonyericsson.soundenhancement android.permission.RECORD_AUDIO || printf 'RECORD_AUDIO grant failed; inspect package permissions.\n'
+sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement SYSTEM_ALERT_WINDOW allow || printf 'Background/overlay app-op rejected.\n'
+sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_IN_BACKGROUND allow || printf 'Background/overlay app-op rejected.\n'
+sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_ANY_IN_BACKGROUND allow || printf 'Background/overlay app-op rejected.\n'
+exec sh "$MODDIR/system/bin/sefx" daemon
