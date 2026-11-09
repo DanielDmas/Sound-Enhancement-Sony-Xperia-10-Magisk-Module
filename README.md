@@ -1,5 +1,29 @@
 # Sony Sound Enhancement for Xperia XZ1 Compact
 
+## Latest test build: RC3 for G8441 / Android 12L
+
+**[Download the verified RC3 build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42708340513/artifacts/13715231063)**
+
+This candidate targets the European/international **Xperia XZ1 Compact G8441
+(lilac), LineageOS 19.1 / Android 12L API 32**, with Magisk. It passed **179 CI
+tests**, including **14 actual Magisk BusyBox tests**, and two passes against
+pinned Yoshino/Flamefire configuration sources. Physical/acoustic validation
+is still required.
+
+Extract GitHub's outer artifact archive once and install the inner
+**SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip** through Magisk > Modules >
+Install from storage. Then reboot normally. The module ID is unchanged, so
+this upgrades the existing module without a ROM flash or factory reset.
+
+[RC3 installation and troubleshooting](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/blob/audit/rc3-recovery-validation-20261109/docs/RC3.md)
+| [RC3 source and changes (PR #3)](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/pull/3)
+
+The RC3 source lives on **audit/rc3-recovery-validation-20261109**. Default
+**Code > Download ZIP** is not the installable module. The older RC1 reference
+below remains available.
+
+---
+
 ## Download v2.0.0-rc.1 for Xperia XZ1 Compact / Android 12L
 
 **[Open the verified GitHub download build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)**
