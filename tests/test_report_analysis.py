@@ -26,6 +26,14 @@ class ReportAnalysis(unittest.TestCase):
         r=report.xml_check(b'<audio_effects_conf><effects><effect name="eq"/><effect name="eq"/></effects></audio_effects_conf>')
         self.assertIn('Duplicate effect: eq',r['errors'])
 
+    def test_missing_effect_attributes_are_not_treated_as_valid(self):
+        r=report.xml_check(b'<audio_effects_conf><libraries/><effects><effect name="eq"/></effects></audio_effects_conf>')
+        self.assertIn('Missing library attribute for eq',r['errors']);self.assertIn('Missing/invalid UUID for eq',r['errors'])
+
+    def test_missing_required_sections_are_not_treated_as_valid(self):
+        r=report.xml_check(b'<audio_effects_conf/>')
+        self.assertIn('Expected one libraries section',r['errors']);self.assertIn('Expected one effects section',r['errors'])
+
     def test_missing_sony_proxy_in_module_is_identified(self):
         r=report.inspect_report(snapshot(b'<audio_effects_conf><effects/></audio_effects_conf>',kind='module'))
         self.assertGreater(r['configuration_errors'],0)

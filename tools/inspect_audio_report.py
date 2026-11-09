@@ -33,6 +33,9 @@ def xml_check(data,require_sony=False):
     except (ET.ParseError,ValueError) as exc:return {'errors':['Malformed XML: '+str(exc)],'warnings':[]}
     name=local(root.tag)
     if name=='audio_effects_conf':
+        containers=[local(x.tag) for x in root]
+        for required in ('libraries','effects'):
+            if containers.count(required)!=1:errors.append('Expected one '+required+' section')
         libraries={};effects={};proxies=[]
         for parent in root:
             if local(parent.tag)=='libraries':
@@ -53,7 +56,14 @@ def xml_check(data,require_sony=False):
         for key,item in effects.items():
             for node in [item,*item]:
                 library=node.get('library')
+                if not library:errors.append('Missing library attribute for '+key)
+                if not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',node.get('uuid','')):
+                    errors.append('Missing/invalid UUID for '+key)
                 if library and library not in libraries:errors.append('Missing library '+library+' for '+key)
+            if local(item.tag)=='effectProxy':
+                members=[local(x.tag) for x in item]
+                if not members or any(members.count(role)>1 for role in ('libsw','libhw')):
+                    errors.append('Missing/duplicate proxy implementation for '+key)
         for node in root.iter():
             if local(node.tag)=='apply' and node.get('effect') not in effects:
                 errors.append('Unresolved apply effect: '+str(node.get('effect')))
