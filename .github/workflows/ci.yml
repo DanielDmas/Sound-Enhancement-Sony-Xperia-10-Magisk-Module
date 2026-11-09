@@ -1,0 +1,23 @@
+name: Session manager checks and candidate ZIP
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Runtime, lifecycle and packaging regression tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Build candidate module
+        run: python3 tools/build_module.py
+      - name: Save installable ZIP and SHA-256
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SoundEnhancement-v2.0.0-rc.1-lilac-12L
+          path: dist/*
+          if-no-files-found: error

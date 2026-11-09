@@ -1,62 +1,16 @@
-MODPATH=${0%/*}
+#!/system/bin/sh
+# One boot initialization, followed by a non-recursive session watcher.
+MODDIR=${0%/*}
+[ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
+umask 077
+mkdir -p "$MODDIR/.sefx"
+chmod 0700 "$MODDIR/.sefx"
+exec >> "$MODDIR/.sefx/boot.log" 2>&1
+printf 'Sony audio boot initialization\n'
+. "$MODDIR/sefx/lib.sh"
 
-# log
-LOGFILE=$MODPATH/debug.log
-exec 2>$LOGFILE
-set -x
-
-# var
-API=`getprop ro.build.version.sdk`
-if [ ! -d $MODPATH/vendor ]\
-|| [ -L $MODPATH/vendor ]; then
-  MODSYSTEM=/system
-fi
-MOD=/data/adb/modules/nomount
-NM=$MOD/bin/nm
-NOMOUNT=false
-[ ! -f $MOD/disable ] && [ -x $NM ] && $NM v >/dev/null 2>&1 && NOMOUNT=true
-AML=/data/adb/modules/aml
-AUD=`cat $MODPATH/audio.txt`
-
-# NoMount
-if $NOMOUNT; then
-  DES=/system/etc/vintf/manifest.xml
-  FILE=$MODPATH$DES
-  if [ -f $FILE ] && [ -f $DES ]; then
-    $NM del $DES 2>/dev/null || true
-    $NM add $DES $FILE
-  fi
-  if [ ! -d $AML ] || [ -f $AML/disable ]; then
-    FILES=`find $MODPATH/system $MODPATH/vendor -type f -name $AUD`
-    for FILE in $FILES; do
-      DES=`echo $FILE | sed -e "s|$MODPATH||g" -e 's|/system/odm|/odm|g' -e 's|/system/my_product|/my_product|g'`
-      RDES=`realpath $DES`
-      if [ -f $RDES ]; then
-        $NM del $RDES 2>/dev/null || true
-        $NM add $RDES $FILE
-      fi
-    done
-  fi
-fi
-
-# function
-dolby_prop() {
-resetprop -n ro.odm.build.SomcCntrl.manufacture Sony
-resetprop -n ro.odm.build.SomcCntrl.Brand Sony
-resetprop -n ro.odm.build.SomcCntrl.Model Pdx203
-resetprop -n ro.odm.build.SomcCntrl.device pdx203
-resetprop -n ro.product.manufacturer Sony
-resetprop -n ro.dolby.mod_uuid false
-resetprop -n ro.dolby.music_stream false
-resetprop -n vendor.audio.dolby.ds2.enabled false
-resetprop -n vendor.audio.dolby.ds2.hardbypass false
-#resetprop -p --delete persist.vendor.dolby.loglevel
-#resetprop -n persist.vendor.dolby.loglevel 0
-#resetprop -n vendor.dolby.dap.param.tee false
-#resetprop -n vendor.dolby.mi.metadata.log false
-}
-
-# property
+# Retain the Sony capability properties used by the previously working build.
+# These are capability flags, not an attempt to overwrite the user's EQ preset.
 resetprop -n ro.audio.ignore_effects false
 resetprop -n ro.sony.global.effect true
 resetprop -n ro.semc.product.model I4113
@@ -64,233 +18,52 @@ resetprop -n ro.semc.ms_type_id PM-1181-BV
 resetprop -n ro.semc.version.fs GENERIC
 resetprop -n ro.semc.product.name "Xperia 10"
 resetprop -n ro.semc.product.device I41
-#resetprop -n ro.boot.hardware.sku I4113
 resetprop -n audio.sony.effect.use.proxy true
 resetprop -n vendor.audio.sony.effect.use.proxy true
 resetprop -n vendor.audio.sony.effect.custom.sp_bundle 0x122
 resetprop -n vendor.audio.sony.effect.custom.caplus_hs 0x298
 resetprop -n vendor.audio.sony.effect.custom.caplus_sp 0x2B8
-#resetprop -n vendor.audio.sony.effect.wait_ef_off_ms 500
-#resetprop -n vendor.audio.sony.effect.wait_conv_on_ms 500
-#resetprop -n vendor.audio.sony.effect.cpu_min_freq_little 600
-#resetprop -n vendor.audio.sony.effect.cpu_min_freq_big 600
 resetprop -n ro.somc.dseehx.supported true
-resetprop -p --delete persist.sony.effect.ahc
 resetprop -n persist.sony.effect.ahc true
-resetprop -p --delete persist.sony.mono_speaker
 resetprop -n persist.sony.mono_speaker false
-resetprop -p --delete persist.sony.effect.dolby_atmos
 resetprop -n persist.sony.effect.dolby_atmos false
-resetprop -p --delete persist.sony.enable.dolby_auto_mode
 resetprop -n persist.sony.enable.dolby_auto_mode true
-resetprop -p --delete persist.sony.effect.clear_audio_plus
 resetprop -n persist.sony.effect.clear_audio_plus true
 resetprop -n vendor.audio.use.sw.alac.decoder true
-#ddolby_prop
 
-# special file
-FILE=/dev/sony_hweffect_params
-FILE2=/dev/msm_hweffects
-if [ ! -e $FILE ]; then
-  if [ -e $FILE2 ]; then
-    MM=`stat -c "%t %T" $FILE2 | { read major minor; printf "%d %d\n" 0x$major 0x$minor; }`
-  fi
-  if [ "$MM" ]; then
-    mknod $FILE c $MM
-    chmod 0660 $FILE
-    chown 1000.1005 $FILE
-#    chcon u:object_r:audio_hweffect_device:s0 $FILE
-  fi
-fi
-
-# restart
-if [ "$API" -ge 24 ]; then
-  SERVER=audioserver
-else
-  SERVER=mediaserver
-fi
-killall $SERVER\
- android.hardware.audio@4.0-service-mediatek\
- android.hardware.audio.service
-
-# unused
-#NAMES=vendor.semc.system.idd-1-0
-#SERVICES="idds `realpath /vendor`/bin/idd-logreader
-#          `realpath /vendor`/bin/hw/vendor.semc.system.idd@1.0-service"
-
-# function
-dolby_service() {
-# stop
-NAMES="dms-hal-1-0 dms-hal-2-0"
-for NAME in $NAMES; do
-  if [ "`getprop init.svc.$NAME`" == running ]\
-  || [ "`getprop init.svc.$NAME`" == restarting ]; then
-    stop $NAME
-  fi
-done
-# mount
-DIR=/odm/bin/hw
-FILES=$DIR/vendor.dolby.hardware.dms@2.0-service
-if [ "`realpath $DIR`" == $DIR ]; then
-  for FILE in $FILES; do
-    MODFILE=$MODPATH$MODSYSTEM/vendor$FILE
-    if [ -f $FILE ]; then
-      if $NOMOUNT; then
-        $NM del $FILE 2>/dev/null || true
-        $NM add $FILE $MODFILE
-      else
-        umount $FILE
-        mount -o bind $MODFILE $FILE
-      fi
+# Preserve the upstream Sony hardware-effect device alias when required.
+if [ ! -e /dev/sony_hweffect_params ] && [ -c /dev/msm_hweffects ]; then
+    alias_numbers=$(stat -c '%t %T' /dev/msm_hweffects | {
+        read -r alias_major alias_minor
+        printf '%d %d\n' "0x$alias_major" "0x$alias_minor"
+    })
+    if [ -n "$alias_numbers" ]; then
+        # Two decimal numbers from stat/printf, never user-provided shell code.
+        set -- $alias_numbers
+        mknod /dev/sony_hweffect_params c "$1" "$2" && {
+            chmod 0660 /dev/sony_hweffect_params
+            chown 1000:1005 /dev/sony_hweffect_params
+        }
     fi
-  done
 fi
-# permission
-chmod 0755 $MODPATH$MODSYSTEM/vendor/bin/hw/*
-chown 0.2000 $MODPATH$MODSYSTEM/vendor/bin/hw/*
-# run
-SERVICES=`realpath /vendor`/bin/hw/vendor.dolby.hardware.dms@1.0-service
-for SERVICE in $SERVICES; do
-  killall $SERVICE
-  $SERVICE &
-  PID=`pidof $SERVICE`
-done
-}
 
-# dolby
-#ddolby_service
+# Upstream restarts audio at boot so the newly mounted configs are loaded.
+# Keep one audioserver restart here; never periodically kill Sony or the HAL.
+if pidof audioserver >/dev/null 2>&1; then killall audioserver; fi
 
-# wait
-until [ "`getprop sys.boot_completed`" == 1 ]; do
-  sleep 10
+boot_attempt=0
+until [ "$(getprop sys.boot_completed)" = 1 ]; do
+    [ "$boot_attempt" -lt 180 ] || { printf 'Boot readiness timed out.\n'; exit 1; }
+    [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || exit 0
+    sleep 2; boot_attempt=$((boot_attempt+1))
 done
 
-# list
-PKGS=`cat $MODPATH/package.txt`
-#dPKGS=`cat $MODPATH/package-dolby.txt`
-for PKG in $PKGS; do
-  magisk --denylist rm $PKG 2>/dev/null
-  magisk --sulist add $PKG 2>/dev/null
-done
-if magisk magiskhide sulist; then
-  for PKG in $PKGS; do
-    magisk magiskhide add $PKG
-  done
-else
-  for PKG in $PKGS; do
-    magisk magiskhide rm $PKG
-  done
-fi
-
-# settings
-settings put global 5pole_accessory_detect 2
-settings put global dnc_num_modes 3
-settings put global dnc_mode_name_0 Bus/Train
-settings put global dnc_mode_name_1 Airplane
-settings put global dnc_mode_name_2 Office
-
-# grant
-PKG=com.sonyericsson.soundenhancement
-if appops get $PKG >/dev/null 2>&1; then
-  pm grant --all-permissions $PKG
-  appops set $PKG SYSTEM_ALERT_WINDOW allow
-  appops set $PKG TAKE_AUDIO_FOCUS allow
-  if [ "$API" -ge 30 ]; then
-    appops set $PKG AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
-  fi
-  if [ "$API" -ge 33 ]; then
-    appops set $PKG ACCESS_RESTRICTED_SETTINGS allow
-  fi
-  PKGOPS=`appops get $PKG`
-  UID=`grep "^$PKG " /data/system/packages.list | awk '{print $2}'`
-  if [ "$UID" ] && [ "$UID" -gt 9999 ]; then
-    UIDOPS=`appops get --uid "$UID"`
-  fi
-fi
-
-# allow
-PKG=com.dolby.daxappui
-if appops get $PKG >/dev/null 2>&1; then
-  if [ "$API" -ge 30 ]; then
-    appops set $PKG AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
-  fi
-  PKGOPS=`appops get $PKG`
-  UID=`grep "^$PKG " /data/system/packages.list | awk '{print $2}'`
-  if [ "$UID" ] && [ "$UID" -gt 9999 ]; then
-    UIDOPS=`appops get --uid "$UID"`
-  fi
-fi
-
-# allow
-PKG=com.dolby.daxservice
-if appops get $PKG >/dev/null 2>&1; then
-  if [ "$API" -ge 30 ]; then
-    appops set $PKG AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
-  fi
-  PKGOPS=`appops get $PKG`
-  UID=`grep "^$PKG " /data/system/packages.list | awk '{print $2}'`
-  if [ "$UID" ] && [ "$UID" -gt 9999 ]; then
-    UIDOPS=`appops get --uid "$UID"`
-  fi
-fi
-
-# allow
-PKG=reiryuki.soundenhancementlauncher
-if appops get $PKG >/dev/null 2>&1; then
-  appops set $PKG WRITE_SETTINGS allow
-  appops set $PKG SYSTEM_ALERT_WINDOW allow
-  if [ "$API" -ge 30 ]; then
-    appops set $PKG AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
-  fi
-  if [ "$API" -ge 33 ]; then
-    pm revoke $PKG android.permission.POST_NOTIFICATIONS
-    appops set $PKG ACCESS_RESTRICTED_SETTINGS allow
-  fi
-fi
-
-# function
-stop_log() {
-SIZE=`du $LOGFILE | sed "s|$LOGFILE||g"`
-if [ "$LOG" != stopped ] && [ "$SIZE" -gt 50 ]; then
-  exec 2>/dev/null
-  set +x
-  LOG=stopped
-fi
-}
-check_audioserver() {
-if [ "$NEXTPID" ]; then
-  PID=$NEXTPID
-else
-  PID=`pidof $SERVER`
-fi
-sleep 15
-stop_log
-NEXTPID=`pidof $SERVER`
-[ "$PID" != "$NEXTPID" ] && killall $PROC
-check_audioserver
-}
-check_service() {
-for SERVICE in $SERVICES; do
-  if ! pidof $SERVICE; then
-    $SERVICE &
-    PID=`pidof $SERVICE`
-  fi
-done
-}
-
-# check
-#dcheck_service
-PROC=com.sonyericsson.soundenhancement
-#dPROC="com.sonyericsson.soundenhancement com.dolby.daxservice com.dolby.daxappui"
-killall $PROC
-check_audioserver
-
-
-
-
-
-
-
-
-
-
+# RECORD_AUDIO is a real runtime permission. Do not use the invalid grant-all
+# command, change the user's Magisk denylist, or clear application settings.
+boot_user=$(sefx_timeout 6 cmd activity get-current-user 2>/dev/null)
+case "$boot_user" in ''|*[!0-9]*) printf 'Cannot determine Android user.\n'; exit 1 ;; esac
+sefx_timeout 8 pm grant --user "$boot_user" com.sonyericsson.soundenhancement android.permission.RECORD_AUDIO || true
+sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement SYSTEM_ALERT_WINDOW allow || true
+sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_IN_BACKGROUND allow || true
+sefx_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_ANY_IN_BACKGROUND allow || true
+exec sh "$MODDIR/system/bin/sefx" watch

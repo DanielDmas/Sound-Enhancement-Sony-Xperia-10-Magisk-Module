@@ -1,151 +1,76 @@
-# Sound Enhancement & Dolby Atmos Sony Xperia 10 Magisk Module
+# Sony Sound Enhancement: Android 12L session manager
 
-## DISCLAIMER
-- Dolby & Sony apps and blobs are owned by Dolby™ and Sony™.
-- The MIT license specified here is for the Magisk Module only, not for Dolby nor Sony apps and blobs.
+This fork repairs the activation/lifecycle scripts around Rei Ryuki's Xperia 10 Sony audio port. The installable candidate is **v2.0.0-rc.1**, for **Sony Xperia XZ1 Compact G8441 / lilac, Android 12L / API 32, Magisk**. Its Sony apps, framework JARs and native libraries are unchanged. This is a root module, not a ROM or a DRM-key restore.
 
-## Descriptions
-- Equalizers sound effect ported from Sony Xperia 10 (I4113) and integrated as a Magisk Module for all supported and rooted devices with Magisk
-- Global type sound effect
-- Dolby Atmos changes/spoofs ro.product.manufacturer to Sony which may break some system apps and features functionality
-- Dolby Atmos conflicted with `vendor.dolby.hardware.dms@2.0-service`
-- Sound Enhancement doesn't support ACDB Magisk Module because using effect proxy
+The previous local manual-launch version worked initially on a G8441, then sometimes opened controls without changing the sound. This fork fixes script defects that can cause incorrect or lost session attachment. No physical Xperia is connected for acoustic verification of the repaired build; automated tests and a successful Android intent are not proof of audible DSP processing.
 
-## Sources
-- https://dumps.tadiphone.dev/dumps/sony/i4113 kirin_dsds-user-10-53.1.A.2.2-053001A00020000200894138764-release-keys
-- libhscomp_jni.so & libhscomp.so: https://dumps.tadiphone.dev/dumps/sony/akari akari-user-9-TAMA2-2.0.1-191021-1837-1-dev-keys
-- system_dolby: https://dumps.tadiphone.dev/dumps/sony/xq-at51 qssi-user-10-58.0.A.3.31-058000A003003102854466984-release-keys
-- libhidlbase.so, libhidltransport.so, & libhwbinder.so: CrDroid ROM Android 13
-- libutils.so: LineageOS 23 Android 16 BP2A.250605.031.A2 1758630651
-- libmagiskpolicy.so: Magisk (stable) 30.7 (30700)
+## Install over the existing manual-launch module
 
-## Changelog
+1. Keep your old `SoundEnhancement-v1.2.4-manual-launch.zip` and the clean `boot.img` from your current ROM as a rollback kit.
+2. Download the built **`SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip`** and its SHA-256 file. Do not install GitHub's generic source-code ZIP. GitHub Actions also creates a wrapper artifact ZIP; extract that wrapper once and install the module ZIP inside it.
+3. In **Magisk > Modules > Install from storage**, choose the new module ZIP. The ID stays `SoundEnhancement`, so this updates the existing module. Do not remove the old module first or wipe the phone. Check for a successful installation and then restart Android normally.
+4. Play music through normal Android audio output. Open **Magisk > Modules > Sony Sound Enhancement - Session Manager > Action**. It should name the player/session, request attachment, and open Sony's panel for that player.
+5. For the listening check, switch **ClearAudio+ and DSEE HX off**, if present, and compare flat EQ with a strong manual bass/treble cut at moderate volume. Turn off the player's own EQ during this test. Then try your usual wired/Bluetooth route separately.
 
-v1.2.4
-- Dolby Atmos:
-  - Fix manifest.xml detection bug in some ROMs
-  - Fix sepolicy denial
+You do not need TWRP, another ROM flash, another Magisk boot-image patch, Tasker, AML or Dolby for this upgrade. The focused installer refuses an incompatible model/API or missing 32-bit support instead of producing a knowingly nonworking partial installation. It ignores old shared-storage `optionals.prop` settings, preserves Sony app data on upgrade and does not remove unrelated modules.
 
-v1.2.3
-- AudioSettings.apk v1.8
-  - Executes sefx command automatically via app launcher (if the root access is granted) so you don't need to run sefx via Termux/Terminal manually
-  - Fix launch animation dark theme if battery saver is on in AOSP
-- Dolby Atmos:
-  - Check functions in mirror /apex files instead of mirror /system if exist
-  - Remove hardware services conflict restart (Use this instead: https://github.com/reiryuki/Hardware-Services-Restarter-Magisk-Module)
-  - Fix sepolicy denial
+## What changed
 
-v1.2.2
-- Dolby Atmos: Fix inaccessible libhwbinder.so in some ROMs
-- AudioSettings.apk v1.7
-  - Fix launch animation
+- Correct Android **AudioEffect** content types: music 0, movie 1, game 2, voice 3. AudioAttributes uses different numeric values; they are explicitly translated.
+- Find **current started playback** directly in Android's audio records, match package ownership by exact UID/PID, reject stale log entries and invalid/global session IDs. A media-session notification is no longer required.
+- Send explicit intents to the actual exported Sony receiver, include stopped packages, and pass the same package/session/content type to Sony's redirector. Its bytecode confirms that it reads the package extra.
+- Start a root-side watcher after boot: new sessions, route changes, audio-server/Sony-process restarts, and periodic renewal trigger reconnection. It does not need Magisk's UI to stay open.
+- Account for a Sony-specific lifecycle quirk: CLOSE resets a whole package. Reopen surviving sessions for that package rather than accidentally leaving them disconnected.
+- Serialize manual/background refreshes, recover stale locks, bound Android commands with timeouts, distinguish Android error text from real delivery, rotate logs and provide diagnostics. Use Magisk's BusyBox explicitly; use Android's own `ps` for its NAME column.
+- Remove the old recursive audio-server monitor and its unrecovered Sony process kills. A single audio-server restart remains at boot to load mounted audio configurations, as in the previous setup.
+- Stop the installer's module-name-change cleanup and implicit data-app uninstall. Keep presets; no automatic SELinux-permissive fallback or global audio-server restart during routine refreshes.
 
-v1.2.1
-- AudioSettings.apk v1.6
-- Support NoMount metamodule
-- Resets module folders/files permissions at post-fs-data
-- Move _uninstall.log to /data/adb/logs/
-- Dolby Atmos:
-  - Hides in-built LunarisDolby.apk
-- Removes conflicted weird modules
+## Automatic reconnection and limits
 
-v1.2.0
-- Update libmagiskpolicy.so from Magisk (stable) 30.7 (30700) (fixes selinux denials in KernelSU)
-- Does not disable raw playback (You can use Audio Compatibility Patch Reborn Magisk Module instead)
+Auto reconnect is on by default. The watcher polls every **5 seconds during detected playback**, every **10 seconds when idle/erroring**, and renews requests after **60 seconds**. It rebuilds affected sessions after detected route/server/process changes. It holds no wake lock: Android sleep/Doze can delay polling, and reattachment is not instantaneous. Settings are retained in the module's private `.sefx/config` and preserved across this fork's upgrades.
 
-v1.1.9
-- Fix wrong target in latest KernelSU
-- Improve detections
+The Sony port can still be limited by the ROM's audio HAL, exclusive/direct/bit-perfect output, another app owning the effects, or Sony's proprietary implementation. A visible control, received broadcast, DSEE capability string or running watcher does not prove the samples are being processed. This build targets the known Android 12L setup, not arbitrary LineageOS 22/23 installations. Lost DRM keys are not restored.
 
-v1.1.8
-- Dolby Atmos:
-  - Fix wrong manifest.xml location patch target in latest Magisk version
+## Useful commands
 
-v1.1.7
-- Using startService instead of startForegroundService to fix crash in KernelSU
-- Tidy up aml.sh
-- Exclude \*audio\*effects\*haptic\*.xml
-- Fix wrong file permissions in some ROMs
+Use an authorized ADB connection, for example `adb shell su -c 'sefx status'`. On Windows Command Prompt use double quotes around a multiword command, or open `adb shell`, run `su`, then enter the command.
 
-v1.1.6
-- Dolby Atmos:
-  - Fix ZN7android8String16aSEOS0 function not found in some ROMs
-  - Add libutils.so as system_support
-  - Move DaxUI.apk 36dB to priv-app
-- Abort if failed to mount mirror system at installation
+| Command | Purpose |
+| --- | --- |
+| `sefx` | Reattach active media and open Sony's panel. Same as Magisk Action. |
+| `sefx open org.example.player` | Open settings for one specific active player when several are playing. |
+| `sefx attach` | Reattach without opening the UI. |
+| `sefx refresh` | Close/reopen managed active sessions, retaining presets and app data. |
+| `sefx status` | Show watcher state, detected players and last successful delivery requests. |
+| `sefx auto off` / `sefx auto on` | Stop/restart automatic reconnection. Off takes effect after the current bounded poll/sleep. |
+| `sefx doctor` | Save a private diagnostic report inside the module. |
+| `sefx report` | Generate a report and copy it to this user's Downloads. Review it before sharing. |
 
-v1.1.5
-- Fix conflict with Play Integrity Fix Magisk Module in some devices
+## If settings still make no audible difference
 
-v1.1.4
-- Fix sefx script failure in some ROMs
-- Dolby Atmos:
-  - Fake Kitsune Mask detection
-- Improve /odm and /my_product support detection
+1. Keep music playing; press Action again. Read the player/session and any error instead of judging only whether the UI opened.
+2. Switch ClearAudio+ / DSEE HX off for the manual-EQ test. Disable the player's own EQ and use normal Android output; exclusive USB/direct output may bypass system effects. Test wired first, then Bluetooth separately.
+3. Run `adb shell su -c "sefx refresh"` and test again. This rebuilds the detected sessions without deleting your settings or rebooting the phone.
+4. Run `adb shell su -c "sefx status"`. If needed, enable the watcher with `adb shell su -c "sefx auto on"`.
+5. While the failure is happening, run `adb shell su -c "sefx report"`. The output names a `SonyAudio-diagnostics-YYYYMMDD-HHMMSS.txt` file in Downloads. It includes audio/session state, AudioFlinger, Sony package/app-ops information, recent logs and the last Android intent result. Logs may contain app names and playback details; nothing is uploaded automatically.
 
-## Screenshots
-https://t.me/androidryukimodsdiscussions/144433
+An incompatible output path or failure inside the proprietary effect engine needs evidence from this report and a listening check. Reinstalling Android or formatting Data is not an appropriate first response to an inactive EQ.
 
-## Requirements
-- Android 10 (SDK 29) and up
-- Magisk or Kitsune Mask or KernelSU or Apatch installed
-- Sound Enhancement:
-  - armeabi-v7a or arm64-v8a with armeabi-v7a support architecture
-  - 32 bit HIDL audio service
-- Dolby Atmos:
-  - arm64-v8a architecture
-  - HIDL audio service
-  - Recommended to use Magisk Delta/Kitsune Mask for systemless early init mount manifest.xml if your ROM is Read-Only https://t.me/ryukinotes/49
+## Roll back
 
-## WARNING!!!
-Possibility of bootloop or even softbrick or a service failure on Read-Only ROM with the Dolby Atmos if you don't use Magisk Delta/Kitsune Mask.
+If Android boots, disable the module in Magisk and restart. To restore the previous implementation, install the saved v1.2.4 manual-launch ZIP and restart; note that its upstream installer can clear data on a name change, so record presets first.
 
-## Installation Guide & Download Link
-- Recommended to use Magisk Delta/Kitsune Mask if Dolby Atmos is activated https://t.me/ryukinotes/49
-- Remove any other else Dolby MAGISK MODULE with different name (no need to remove if it's the same name) if Dolby Atmos is activated
-- Reboot
-- If you are using KernelSU, you need to disable Unmount Modules by Default in KernelSU app settings and install https://github.com/KernelSU-Modules-Repo/meta-overlayfs or https://github.com/KernelSU-Modules-Repo/magic_mount_rs or https://github.com/KernelSU-Modules-Repo/hybrid_mount or https://github.com/maxsteeel/nomount first depending on ROM compatibility
-- If you have Dolby in-built in your ROM, then you need to activate data.cleanup=1 at the first time install (READ Optionals bellow!)
-- Install this module https://move2link.co/6af720e via Magisk app or Kitsune Mask app or KernelSU app or Apatch app or Recovery if Magisk or Kitsune Mask installed
-- Install AML Magisk Module https://t.me/ryukinotes/34 only if using any other else audio mod module
-- Reboot
-- Disable the "No active profiles" notification and ignore it it's nothing
-- If you are using KernelSU, you need to allow superuser list manually all package name listed in package-dolby.txt (and your home launcher app also) (enable show system apps) and reboot afterwards
-- If you are using SUList, you need to allow list manually your home launcher app (enable show system apps) and reboot afterwards
-- If you have vibrator, camera, charging/USB, SIM card/RIL, display, brightness, WiFi, thermal, and sensors issues (fingerprint, proximity, gyroscope, etc.), then install https://github.com/reiryuki/Hardware-Services-Restarter-Magisk-Module also
-- Play music and launch the Sound Enhancement app (grant the root access to execute sefx command automatically)
-- You can also run sefx via Terminal/Termux app while playing music:
+If Android bootloops and recovery can access Data, create `/data/adb/modules/SoundEnhancement/disable`, then reboot. If Data is inaccessible but fastboot works, restore only the clean `boot.img` from the **exact current ROM** to stop Magisk loading modules. Never flash another ROM's boot image or relock the bootloader with a custom system.
 
-  `su`
-  
-  `sefx`
+## Build and verification
 
-- If sefx command triggers integrity failure in your ROM then you can use Xperia Music instead: https://github.com/reiryuki/Xperia-Music-Magisk-Module and choose Sound effects in the app
+With Python 3 and a POSIX shell:
 
-## Download Tutorial
-https://t.me/ryukinotes/97
+```sh
+python3 -m unittest discover -s tests -v
+python3 tools/build_module.py
+```
 
-## Optionals
-- https://t.me/ryukinotes/56
-- Global: https://t.me/ryukinotes/35
-- Stream: https://t.me/ryukinotes/52
+The builder creates `dist/SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip` and its `.zip.sha256` file. It verifies 55 protected upstream APK/JAR/ELF files, shell syntax, ZIP CRCs and deterministic packaging. No Android SDK, Java compiler or Tasker is needed because the supplied proprietary binaries are reused, not rebuilt. The test suite uses realistic Android 12L fixtures and command-boundary fakes; it does not emulate the hardware DSP. GitHub Actions runs tests and saves the candidate artifact.
 
-## Troubleshootings
-- https://t.me/ryukinotes/56
-- Global: https://t.me/ryukinotes/34
-
-## Support & Bug Report
-- https://t.me/ryukinotes/54
-- If you don't do above, issues will be closed immediately
-
-## Credits and Contributors
-- @HuskyDG
-- https://t.me/viperatmos
-- https://t.me/androidryukimodsdiscussions
-- @HELLBOY017
-- https://t.me/androidappsportdevelopment
-
-## Sponsors
-https://t.me/ryukinotes/25
-
-
+See [docs/INVESTIGATION.md](docs/INVESTIGATION.md) for evidence, primary sources and remaining validation work. Upstream scripts are MIT-licensed; Sony/Dolby retain their rights in the supplied apps/libraries. Do not interpret the scripts' license as a license to proprietary payload source code.

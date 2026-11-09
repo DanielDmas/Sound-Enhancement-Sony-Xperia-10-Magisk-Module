@@ -1,0 +1,6 @@
+# Fixed defaults for the focused Magisk/lilac/Android-12L build.
+se.dolby=0
+data.cleanup=0
+permissive.mode=0
+mod.ui=0
+debug.log=0

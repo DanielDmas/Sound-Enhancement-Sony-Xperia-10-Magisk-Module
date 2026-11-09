@@ -74,14 +74,7 @@ FILE=$MODPATH/sepolicy.rule
 FILE=$MODPATH/sepolicy.pfsd
 sepolicy_sh
 
-# conflict
-NAMES="ainur_narsil zyx_ainur_silmaril"
-for NAME in $NAMES; do
-  DIR=/data/adb/modules/$NAME
-  if [ -d $DIR ] && [ ! -f $DIR/remove ]; then
-    touch $DIR/remove
-  fi
-done
+# Do not remove unrelated modules. Conflicts are reported in diagnostics.
 
 # run
 . $MODPATH/copy.sh

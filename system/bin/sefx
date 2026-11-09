@@ -1,103 +1,37 @@
 #!/system/bin/sh
-
-# function
-start_broadcast() {
-am broadcast -a android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION --es android.media.extra.PACKAGE_NAME $PKG --ei android.media.extra.AUDIO_SESSION $SESSION --ei android.media.extra.CONTENT_TYPE $TYPE
-}
-start_activity() {
-am start-activity -a android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL -c android.intent.category.DEFAULT -p $EQPKG
-}
-sefx_result() {
-echo "Package Name = $PKG"
-[ "$PID" ] && echo "Process ID = $PID"
-if [ "$SESSION" ]; then
-  echo "Audio Session = $SESSION"
-  echo "Content Type = $TYPE ($TYPENAME)"
-  if [ "$SESSION" -lt 0 ]; then
-    echo "Unsupported music player"
-  else
-    FILE=/sys/fs/selinux/enforce
-    FILE2=/sys/fs/selinux/policy
-    if ! start_broadcast; then
-      if [ "`toybox cat $FILE`" = 1 ]; then
-        chmod 640 $FILE
-        chmod 440 $FILE2
-        echo 0 > $FILE
-        start_broadcast
-        echo 1 > $FILE
-      fi
-    fi
-    WARN=0
-    if ! start_activity; then
-      if [ "`toybox cat $FILE`" = 1 ]; then
-        chmod 640 $FILE
-        chmod 440 $FILE2
-        echo 0 > $FILE
-        start_activity
-        echo 1 > $FILE
-      fi
-    fi
-  fi
+# Use Magisk's documented applets even from an ADB/terminal shell.
+if [ -x /data/adb/magisk/busybox ] && [ "${SEFX_SHELL:-}" != magisk_busybox ]; then
+    export SEFX_SHELL=magisk_busybox ASH_STANDALONE=1
+    exec /data/adb/magisk/busybox sh "$0" "$@"
 fi
-}
-run_sefx() {
-PKGS=`dumpsys media_session | sed 's| |\n|g' | grep packages= | sed 's|packages=||g'`
-unset PKG
-if [ "$PKGS" ]; then
-  for PKG in $PKGS; do
-    PIDS=`ps -A | awk -v pkg="$PKG" '$0 ~ pkg {print $2}'`
-    unset SESSION
-    unset TYPE
-    unset TYPENAME
-    if [ "$PIDS" ]; then
-      for PID in $PIDS; do
-        DUMP=`dumpsys audio | grep "$PID" | grep sessionId: | sed 's| |\n|g'`
-        if [ "$DUMP" ]; then
-          SESSIONS=`echo "$DUMP" | grep sessionId: | sed 's|sessionId:||g'`
-          for SESSION in $SESSIONS; do
-            CONTENT=`echo "$DUMP" | grep content= | sed 's|content=||g'`
-            if echo "$CONTENT" | grep -q MUSIC; then
-              TYPE=2
-              TYPENAME=Music
-            elif echo "$CONTENT" | grep -q MOVIE; then
-              TYPE=3
-              TYPENAME=Movie
-            elif echo "$CONTENT" | grep -q SONIFICATION; then
-              TYPE=4
-              TYPENAME=Sonification
-            elif echo "$CONTENT" | grep -q SPEECH; then
-              TYPE=1
-              TYPENAME=Speech
-            elif echo "$CONTENT" | grep -q ULTRASOUND; then
-              TYPE=1997
-              TYPENAME=Ultrasound
-            elif echo "$CONTENT" | grep -q UNKNOWN; then
-              TYPE=0
-              TYPENAME=Unknown
-            else
-              TYPE=-1
-              TYPENAME=Undefined
-            fi
-            sefx_result
-          done
-          [ ! "$SESSION" ] && sefx_result
-        else
-          sefx_result
-        fi
-      done
-    else
-      sefx_result
-    fi
-  done
-fi
-}
-
-# check
-if [ "`whoami`" == root ]; then
-  EQPKG=com.sonyericsson.soundenhancement
-  WARN=1
-  run_sefx
-  [ "$WARN" == 1 ] && echo "Please play music first!"
-else
-  echo "Please type su first!"
-fi
+SEFX_SELF=$(readlink -f "$0")
+MODDIR=${SEFX_SELF%/system/bin/sefx}
+[ -f "$MODDIR/sefx/lib.sh" ] || MODDIR=/data/adb/modules/SoundEnhancement
+[ -f "$MODDIR/sefx/lib.sh" ] || { printf 'Module files missing.\n' >&2; exit 3; }
+. "$MODDIR/sefx/lib.sh"
+sefx_init || exit $?
+trap 'sefx_cleanup' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+case "${1:-open}" in
+    open) sefx_sync manual || exit $?; sefx_panel "${2:-}" || exit $?; sefx_start_watch ;;
+    attach) sefx_sync manual ;;
+    sync) sefx_sync auto ;;
+    refresh) sefx_sync repair ;;
+    status) sefx_status ;;
+    doctor) sefx_diagnostics private ;;
+    report) sefx_diagnostics export ;;
+    auto) sefx_auto "${2:-}" ;;
+    watch) sefx_watch ;;
+    help|-h|--help)
+        printf '%s\n' 'sefx            Attach to active media and open Sony settings' \
+            'sefx open PKG   Select one active player when several are playing' \
+            'sefx attach     Reattach without opening settings' \
+            'sefx refresh    Close/reopen managed sessions; preserve presets' \
+            'sefx status     Show watcher and current session evidence' \
+            'sefx auto on    Enable automatic reconnection' \
+            'sefx auto off   Stop automatic reconnection' \
+            'sefx doctor     Save a private diagnostic report' \
+            'sefx report     Export diagnostics to Downloads' ;;
+    *) printf 'Unknown command. Run: sefx help\n' >&2; exit 2 ;;
+esac
