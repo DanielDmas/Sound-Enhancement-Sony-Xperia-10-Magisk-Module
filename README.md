@@ -1,58 +1,67 @@
 # Sony Sound Enhancement for Xperia XZ1 Compact
 
-## Latest test build: RC3 for G8441 / Android 12L
+## Latest test build: RC4 for G8441 / Android 12L
 
-**[Download the verified RC3 build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42708340513/artifacts/13715231063)**
+**[Download the RC4 installer artifact](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42718445400/artifacts/13718892713)**
 
-This candidate targets the European/international **Xperia XZ1 Compact G8441
-(lilac), LineageOS 19.1 / Android 12L API 32**, with Magisk. It passed **179 CI
-tests**, including **14 actual Magisk BusyBox tests**, and two passes against
-pinned Yoshino/Flamefire configuration sources. Physical/acoustic validation
-is still required.
+Target: European/international **Xperia XZ1 Compact G8441 (lilac), Flamefire
+LineageOS 19.1 / Android 12L API 32, Magisk**. This is a Magisk module upgrade,
+not a ROM. It does not support Android 15/16 or restore lost DRM keys.
 
-Extract GitHub's outer artifact archive once and install the inner
-**SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip** through Magisk > Modules >
-Install from storage. Then reboot normally. The module ID is unchanged, so
-this upgrades the existing module without a ROM flash or factory reset.
+RC4 repairs the private-file Android command transport regression in RC2/RC3
+that can cause **Could not read package ownership**, and exposes the underlying
+Android errors in Action logs and reports. It keeps the persistent state and
+presets. All 55 protected Sony/Dolby APK/JAR/ELF files match the two supplied
+older installers; the proprietary audio engine was not rebuilt.
 
-[RC3 installation and troubleshooting](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/blob/audit/rc3-recovery-validation-20261109/docs/RC3.md)
-| [RC3 source and changes (PR #3)](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/pull/3)
+## Install over the existing module
 
-The RC3 source lives on **audit/rc3-recovery-validation-20261109**. Default
-**Code > Download ZIP** is not the installable module. The older RC1 reference
-below remains available.
+1. Download the artifact above. Extract GitHub's **outer archive once**.
+2. In **Magisk > Modules > Install from storage**, select the inner
+   **SoundEnhancement-v2.0.0-rc.4-lilac-12L.zip**, keeping it packed. Do not
+   uninstall the old module first. Keep your earlier ZIP for rollback.
+3. After a successful installation, **restart Android normally**. No TWRP,
+   ROM reflash, factory reset or additional boot-image patch is needed.
+4. Play music and press the module's **Action**. Check that its log says
+   **Runtime: v2.0.0-rc.4**. Test flat EQ versus a strong manual cut with other
+   EQs, ClearAudio+ and DSEE HX temporarily off, at moderate volume.
 
----
+GitHub's **Code > Download ZIP** is source, not an installable module. The
+artifact also contains the installer's SHA-256 file. Its installer SHA-256 is:
 
-## Download v2.0.0-rc.1 for Xperia XZ1 Compact / Android 12L
+```text
+1d17b51067ea35a6871da3bcfa01724b226ca7b7b154529760a0f24d8c2c1ad7
+```
 
-**[Open the verified GitHub download build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)**
+## Instructions, diagnostics and validation
 
-1. Sign in to GitHub and open the link above.
-2. In the run's **Artifacts** section, click **`SoundEnhancement-v2.0.0-rc.1-lilac-12L`**.
-3. Extract GitHub's downloaded outer archive once. Inside are:
-   - **`SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip`** - install this ZIP in Magisk, keeping it packed.
-   - **`SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip.sha256`** - checksum for that module ZIP.
+- **[RC4 changes, older-version comparison, installation and troubleshooting](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/blob/audit/rc4-binder-transport-20261109/docs/RC4.md)**
+- [Full commands and recovery manual](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/blob/audit/rc4-binder-transport-20261109/README.md)
+- [Source and patch: PR #4](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/pull/4), commit **f29e714**
+- [Extended CI: 202 tests, including 26 using official Magisk31.1 BusyBox, no skips](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42718445257)
+- [Build CI and installer artifact](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42718445400)
 
-The outer GitHub artifact archive is a download container. Magisk needs the **inner module ZIP**. GitHub's **Code > Download ZIP** downloads source files and is not the installable module.
+The extended checks also pass ShellCheck and two patch passes against pinned
+Yoshino/Flamefire configuration sources. The downloaded GitHub installer was
+compared byte for byte with the locally tested build.
 
-The linked build passed **79 tests**, verified **55 unchanged upstream binary containers**, and reproduced the locally tested module ZIP exactly. It targets **G8441/lilac, Android 12L / API 32, with Magisk**. It is a candidate awaiting real-phone audio validation.
+**Physical/acoustic acceptance of RC4 remains pending.** Shell fixtures model
+the Binder descriptor boundary; they do not execute Android's Binder/SELinux,
+ARM libraries or this phone's audio HAL. An enabled switch or delivered
+broadcast alone does not prove processing.
 
-GitHub lists this pinned artifact's expiry as **7 February 2027**. Save both inner files locally; [the Actions page](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions) lists other builds if the pinned artifact becomes unavailable. [GitHub's artifact download instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts) explain the sign-in and Artifacts steps.
+If Action fails, tap its save icon and share the complete log; RC4 includes
+raw command errors and exit codes. If settings open but have no audible effect,
+capture `adb shell su -c "sefx report"` while the failure is happening, before
+pressing Action or switching apps. The command prints the report's Downloads
+path. Review it before sharing; nothing is uploaded automatically.
 
-## Install the downloaded module
+The runtime source lives on **audit/rc4-binder-transport-20261109**; `main`
+retains the upstream runtime while this candidate awaits phone acceptance.
+Use the installer above for RC4. [RC1 reference build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)
+remains available for comparison. RC3 has a reported runtime failure and is
+superseded by RC4.
 
-1. Keep the previous working module ZIP and your current ROM's clean `boot.img` as a rollback kit.
-2. In **Magisk > Modules > Install from storage**, choose `SoundEnhancement-v2.0.0-rc.1-lilac-12L.zip` **over the existing module**, then restart Android normally.
-3. Start music playback, then open **Magisk > Modules > Sony Sound Enhancement - Session Manager > Action**.
-4. To check manual EQ, switch ClearAudio+ and DSEE HX off, if present, and compare flat EQ with a strong manual adjustment at moderate volume.
-
-## Full manual, source and status
-
-- **[Full installation, commands, troubleshooting and recovery manual](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/blob/fix/sony-session-manager-20261108/README.md)**
-- **[Candidate source branch](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/tree/fix/sony-session-manager-20261108)**
-- **[PR #1: implementation, tests and validation](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/pull/1)**
-
-The runtime changes are in the candidate branch and PR #1 pending listening tests on the Xperia; `main` retains the upstream runtime implementation. Use the candidate branch when inspecting or building the repaired module. The download link above points to its verified build.
-
-The Sony apps and native libraries are supplied by the upstream port and retain their original ownership. This module does not restore lost DRM keys, and successful automated tests do not prove that every player or output route processes audio correctly.
+Sony/Dolby retain their rights in the supplied proprietary files. Script fixes
+and automated checks are not a guarantee of every stock Sony feature on every
+player or output route.
