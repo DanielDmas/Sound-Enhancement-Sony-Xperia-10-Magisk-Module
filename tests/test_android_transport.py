@@ -1,5 +1,5 @@
 """Regression coverage for Binder FD transfer, not an SELinux emulator."""
-import json, os, stat, subprocess, time, unittest
+import json, os, shutil, stat, subprocess, sys, time, unittest
 from test_sessions import AndroidFixture, SONY, PLAYER
 
 class TransportChecks:
@@ -76,7 +76,20 @@ class TransportChecks:
         self.assertLess(len(result.stderr.encode()),2500)
         self.assertLessEqual((self.state/'last-command.txt').stat().st_size,8192)
 
-class AndroidTransport(TransportChecks,AndroidFixture):pass
+class AndroidTransport(TransportChecks,AndroidFixture):
+    def test_timeout_helpers_never_inherit_saved_pipe_fd(self):
+        # BusyBox timeout forks a detached timer before exec. An extra saved
+        # pipe FD survives there even though daemonization closes standard FDs.
+        # Reject that FD here so this boundary is testable outside Android too.
+        real=shutil.which('timeout',path=os.environ['PATH'])
+        probe=self.bin/'timeout'
+        probe.write_text('#!'+sys.executable+'\nimport os,sys\n'
+                         'try: os.fstat(3)\n'
+                         'except OSError: pass\n'
+                         'else:\n print("Timer inherited saved pipe FD3",file=sys.stderr); sys.exit(125)\n'
+                         'os.execv('+repr(real)+',['+repr(real)+',*sys.argv[1:]])\n')
+        probe.chmod(0o755)
+        self.runfx('recover')
 
 BUSYBOX=os.environ.get('SEFX_BUSYBOX','')
 @unittest.skipUnless(BUSYBOX and os.getuid()==0,'requires official Magisk BusyBox and root')
@@ -84,3 +97,6 @@ class MagiskAndroidTransport(TransportChecks,AndroidFixture):
     def setUp(self):
         super().setUp();self.env.update(ASH_STANDALONE='1',SEFX_SHELL='magisk_busybox')
     def command(self,*args):return [BUSYBOX,'sh',str(self.module/'system/bin/sefx'),*args]
+    def test_completed_calls_do_not_wait_for_timer_grandchildren(self):
+        start=time.monotonic();self.runfx('recover')
+        self.assertLess(time.monotonic()-start,5)

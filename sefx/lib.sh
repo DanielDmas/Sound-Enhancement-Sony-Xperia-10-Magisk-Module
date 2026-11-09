@@ -131,8 +131,11 @@ sefx_config() {
 }
 sefx_timeout() {
     sefx_limit=$1; shift
-    if command -v timeout >/dev/null 2>&1; then timeout -s KILL "$sefx_limit" "$@" 7>&- 8>&- 9>&-
-    elif [ -x /data/adb/magisk/busybox ]; then /data/adb/magisk/busybox timeout -s KILL "$sefx_limit" "$@" 7>&- 8>&- 9>&-
+    # BusyBox's detached timer can retain extra FDs even after it redirects
+    # standard I/O to null. In particular FD3 is the transport's saved stdout
+    # pipe; leaking it delays EOF until that timer notices its parent exited.
+    if command -v timeout >/dev/null 2>&1; then timeout -s KILL "$sefx_limit" "$@" 3>&- 7>&- 8>&- 9>&-
+    elif [ -x /data/adb/magisk/busybox ]; then /data/adb/magisk/busybox timeout -s KILL "$sefx_limit" "$@" 3>&- 7>&- 8>&- 9>&-
     else printf 'No timeout available; refusing an unbounded Android command.\n' >&2; return 127
     fi
 }

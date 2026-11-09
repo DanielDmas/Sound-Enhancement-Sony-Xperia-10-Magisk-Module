@@ -4,6 +4,7 @@
 
 - Fix the RC2/RC3 private-state command transport regression: Android Binder commands receive separate stdout/stderr pipes and null stdin, never root-private file descriptors.
 - Preserve command exit codes through the relays; bound the relays as well as the command so a retained Android-side pipe cannot hang the manager indefinitely.
+- Close the saved stdout pipe in BusyBox timeout helpers so detached timers do not delay successful commands; cover the monitor boundary and native completion time explicitly.
 - Apply the transport to discovery, broadcasts, panel launch, permissions/app-ops and diagnostic commands; initialize and clean up boot transport state.
 - Print bounded underlying command errors in Magisk Action and retain a private last-command report across invocation cleanup.
 - Reject failed foreground-user queries even when they printed a numeric value; retain error details.

@@ -41,6 +41,11 @@ device-specific failure instead of guessing.
   data. Preserve the command's actual exit status, including partial-output
   failures, instead of accepting the final cat process's successful exit.
 - Close manager lock descriptors before spawning transport processes.
+- Close the saved stdout pipe FD3 in every timeout helper too. BusyBox's
+  detached timer otherwise retains it after standard I/O is redirected to
+  null, delaying EOF until the timer checks whether its parent exited. The
+  first extended CI run caught this delay and two related timing errors;
+  RC4's final wrapper corrects it and adds direct helper/timing regressions.
 - Bound pipe readers as well as the Android command. A service or descendant
   retaining a pipe after the command exits cannot leave the reader hanging
   indefinitely. The drain deadline is command timeout plus two seconds.
@@ -117,3 +122,4 @@ Delivery, a running watcher and a visible enabled switch are not DSP proof.
 - [LineageOS 19.1 cmd implementation: passes stdin/stdout/stderr to IBinder::shellCommand and returns the service result](https://github.com/LineageOS/android_frameworks_native/blob/lineage-19.1/cmds/cmd/cmd.cpp)
 - [Linux SELinux Binder transfer checks: descriptor use and access to the underlying file](https://github.com/torvalds/linux/blob/v4.4/security/selinux/hooks.c)
 - [Magisk module and BusyBox standalone documentation](https://topjohnwu.github.io/Magisk/guides.html)
+- [BusyBox 1.36 timeout timer process](https://github.com/mirror/busybox/blob/1_36_stable/coreutils/timeout.c) and [daemon descriptor handling](https://github.com/mirror/busybox/blob/1_36_stable/libbb/vfork_daemon_rexec.c)
