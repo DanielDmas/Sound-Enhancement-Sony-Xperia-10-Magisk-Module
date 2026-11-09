@@ -1,8 +1,6 @@
 id=SoundEnhancement
-name=Sound Enhancement Sony Xperia 10
-version=v1.2.4
-versionCode=124
-author=Rei Ryuki the Fixer
-description=Equalizers global type sound effect ported from Sony Xperia 10 (I4113) for any armeabi-v7a or arm64-v8a architecture, Android 10 (SDK 29) and up.
-
-
+name=Sony Sound Enhancement - Session Manager
+version=v2.0.0-rc.1
+versionCode=20001
+author=Rei Ryuki the Fixer (Sony port); DanielDmas fork
+description=Android 12L lilac candidate: Sony EQ with automatic session reconnection, explicit player targeting and diagnostics. Magisk Action opens the panel while music plays. Processing must be checked on the phone.

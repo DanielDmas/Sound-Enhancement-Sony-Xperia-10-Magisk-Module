@@ -91,10 +91,8 @@ if [ "$BOOTMODE" != true ]; then
 fi
 
 # optionals
-OPTIONALS=/data/media/"$UID"/optionals.prop
-if [ ! -f $OPTIONALS ]; then
-  touch $OPTIONALS
-fi
+# Do not execute destructive options left in shared storage by another mod.
+OPTIONALS=$MODPATH/installer-defaults.prop
 
 # debug
 if [ "`grep_prop debug.log $OPTIONALS`" == 1 ]; then
@@ -134,6 +132,13 @@ ui_print " "
 mv -f $MODPATH/aml.sh $MODPATH/.aml.sh
 
 # sdk
+case "$MAGISK_VER_CODE" in ''|*[!0-9]*) abort "A valid Magisk environment is required." ;; esac
+if [ "$BOOTMODE" != true ] || [ "$MAGISK_VER_CODE" -lt 24000 ] 2>/dev/null; then
+  abort "Install this candidate through the Magisk app (Magisk 24+)."
+fi
+if [ "$(getprop ro.product.device)" != lilac ] || [ "$API" != 32 ]; then
+  abort "This candidate targets Xperia XZ1 Compact (lilac), Android 12L / API 32 only."
+fi
 NUM=29
 if [ "$API" -lt $NUM ]; then
   ui_print "! Unsupported SDK $API. You have to upgrade your"
@@ -148,11 +153,7 @@ fi
 mount_partitions_in_recovery
 
 # dolby
-if [ "`grep_prop se.dolby $OPTIONALS`" == 0 ]; then
-  DOLBY=false
-else
-  DOLBY=true
-fi
+DOLBY=false
 
 # architecture
 if [ "$ABILIST" ]; then
@@ -187,6 +188,7 @@ if ! echo "$ABILIST" | grep -q $NAME2; then
     ui_print "  Try to install via Magisk app instead"
   fi
   ui_print "  Sound Enhancement will not be working"
+  abort "32-bit ARM application support is required; no incomplete installation will be accepted."
   if [ $DOLBY == true ]; then
     ui_print "  But you can still use the Dolby Atmos"
   fi
@@ -198,6 +200,7 @@ if ! file /*/bin/hw/*audio* | grep -q 32-bit; then
   ui_print "! Sound Enhancement uses 32 bit audio service only"
   ui_print "  But this ROM uses 64 bit audio service"
   ui_print "  Sound Enhancement will not be working"
+  abort "No compatible 32-bit audio HAL was found. Keep the previous module/ROM and save this log."
   if [ $DOLBY == true ]; then
     ui_print "  But you can still use the Dolby Atmos"
   fi
@@ -412,7 +415,8 @@ if [ "$BOOTMODE" == true ]; then
   for PKG in $PKGS; do
     FILE=`find /data/app -name *$PKG*`
     if [ "$FILE" ]; then
-      RES=`pm uninstall $PKG 2>/dev/null`
+      ui_print "! A data-installed version of $PKG may shadow the supplied app."
+      ui_print "  Check Settings > Apps > Uninstall updates if the panel is incompatible."
     fi
   done
 fi
@@ -491,21 +495,14 @@ if [ -f $DIR/uninstall.sh ]; then
 fi
 }
 
-# cleanup
-DIR=/data/adb/modules/$MODID
-FILE=$DIR/module.prop
-PREVMODNAME=`grep_prop name $FILE`
-if [ "`grep_prop data.cleanup $OPTIONALS`" == 1 ]; then
-  sed -i 's|^data.cleanup=1|data.cleanup=0|g' $OPTIONALS
-  ui_print "- Cleaning-up $MODID data..."
-  cleanup
-  ui_print " "
-elif [ -d $DIR ]\
-&& [ "$PREVMODNAME" != "$MODNAME" ]; then
-  ui_print "- Different module name is detected"
-  ui_print "  Cleaning-up $MODID data..."
-  cleanup
-  ui_print " "
+# Preserve settings when upgrading from the differently named manual-launch build.
+# Upstream's name-change cleanup runs uninstall.sh, which deletes Sony app data.
+OLD_CONFIG=/data/adb/modules/$MODID/.sefx/config
+if [ -f "$OLD_CONFIG" ] && [ ! -L "$OLD_CONFIG" ]; then
+  mkdir -p "$MODPATH/.sefx"
+  grep -E '^(auto|interval|idle_interval|refresh_interval)=[0-9]+$' "$OLD_CONFIG" > "$MODPATH/.sefx/config" || true
+  chmod 0700 "$MODPATH/.sefx"
+  chmod 0600 "$MODPATH/.sefx/config"
 fi
 
 # function

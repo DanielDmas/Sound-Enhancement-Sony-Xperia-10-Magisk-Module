@@ -1,37 +1,8 @@
-mount -o rw,remount /data
-[ ! "$MODPATH" ] && MODPATH=${0%/*}
-[ ! "$MODID" ] && MODID=`basename "$MODPATH"`
-UID=`id -u`
-[ ! "$UID" ] && UID=0
-
-# log
-DIR=/data/adb/logs
-mkdir -p $DIR
-exec 2>$DIR/$MODID\_uninstall.log
-set -x
-
-# run
-. $MODPATH/function.sh
-
-# cleaning
-remove_cache
-PKGS=`cat $MODPATH/package.txt`
-#dPKGS=`cat $MODPATH/package-dolby.txt`
-for PKG in $PKGS; do
-  rm -rf /data/user*/"$UID"/$PKG
-done
-remove_sepolicy_rule
-#drm -f /data/vendor/dolby/dax_sqlite3.db
-#dresetprop -p --delete persist.vendor.dolby.loglevel
-resetprop -p --delete persist.sony.effect.ahc
-resetprop -p --delete persist.sony.mono_speaker
-resetprop -p --delete persist.sony.effect.dolby_atmos
-resetprop -p --delete persist.sony.enable.dolby_auto_mode
-resetprop -p --delete persist.sony.effect.clear_audio_plus
-
-
-
-
-
-
-
+#!/system/bin/sh
+# Magisk removes the module directory/mounts. Preserve Sony app data and presets.
+# The watcher sees the remove flag and exits; reboot completes removal.
+MODDIR=${0%/*}
+if [ -d "$MODDIR/.sefx" ] && [ ! -L "$MODDIR/.sefx" ]; then
+    printf 'auto=0\n' > "$MODDIR/.sefx/config"
+fi
+printf 'Sony audio module removal requested. Reboot to remove its mounts.\n'
