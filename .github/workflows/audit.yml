@@ -1,0 +1,22 @@
+name: Extended runtime audit
+on:
+  push:
+    branches: [audit/rc2-hardening-20261109]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify actual Magisk BusyBox and static analysis tools
+        run: python3 tools/audit_toolchain.py
+      - name: Keep reproducible audit tools and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sony-audio-audit-tools
+          path: audit-tools/
+          retention-days: 7
