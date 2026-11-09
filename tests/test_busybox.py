@@ -24,8 +24,10 @@ class MagiskRuntime(AndroidFixture):
     def tearDown(self):
         self.config('auto=0\n')
         for p in self.children:
+            # A killed parent may leave a sleeping child in this owned group.
+            try:os.killpg(p.pid,signal.SIGTERM)
+            except ProcessLookupError:pass
             if p.poll() is None:
-                os.killpg(p.pid,signal.SIGTERM)
                 try:p.wait(timeout=3)
                 except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
         super().tearDown()
@@ -34,10 +36,26 @@ class MagiskRuntime(AndroidFixture):
         self.runfx('attach');x=self.broadcasts('OPEN')[0]
         self.assertIn(PLAYER,x);self.assertEqual(x[x.index('android.media.extra.AUDIO_SESSION')+1],'77')
         self.assertTrue(self.calls('ps'));self.assertTrue(self.calls('pidof'))
+    def test_partial_discovery_keeps_identifiable_music_working(self):
+        self.android['packages']+='package:com.other.player uid:10124\n'
+        self.android['processes']+='3456 com.other.player\n'
+        self.android['audio']+=record(uid=10124,pid=3456,sid=0,piid=11);self.save()
+        self.runfx('sync');self.assertEqual(len(self.broadcasts('OPEN')),1);self.assertIn(PLAYER,self.broadcasts('OPEN')[0])
+    def test_evidence_capture_works_with_real_magisk_applets(self):
+        p=self.module/'system/vendor/etc/audio_effects.xml';p.parent.mkdir(parents=True)
+        p.write_text('<audio_effects_conf><libraries/><effects/></audio_effects_conf>\n')
+        self.env['SEFX_SYSTEM_ROOT']=str(self.root/'rom');self.runfx('doctor')
+        self.assertIn('CONFIG_SNAPSHOT v1 module',(self.state/'diagnostics.txt').read_text())
     def test_kernel_lock_is_respected_by_magisk_busybox(self):
         with (self.state/'attach.flock').open('w') as fd:
             fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);self.runfx('attach',expected=5)
         self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),1)
+    def test_sleep_child_does_not_keep_dead_watchers_lock(self):
+        self.config('auto=1\ninterval=60\nidle_interval=120\n');p=self.spawn('watch')
+        self.until(lambda:(self.state/'heartbeat').exists());time.sleep(.2)
+        p.kill();p.wait(timeout=3)
+        with (self.state/'watch.flock').open('w') as fd:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
     def test_killed_refresh_releases_kernel_lock(self):
         self.android['am_delay']=2;self.save();p=self.spawn('attach')
         self.until(lambda:bool(self.broadcasts('OPEN')))

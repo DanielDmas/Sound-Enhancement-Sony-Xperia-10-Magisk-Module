@@ -11,6 +11,7 @@ fi
 exec >> "$MODDIR/.sefx/boot.log" 2>&1
 printf 'Sony audio boot initialization\n'
 . "$MODDIR/sefx/lib.sh"
+sefx_ready || exit $?
 
 # Retain the Sony capability properties used by the previously working build.
 # These are capability flags, not an attempt to overwrite the user's EQ preset.
@@ -46,6 +47,9 @@ if [ ! -e /dev/sony_hweffect_params ] && [ -c /dev/msm_hweffects ]; then
         mknod /dev/sony_hweffect_params c "$1" "$2" && {
             chmod 0660 /dev/sony_hweffect_params
             chown 1000:1005 /dev/sony_hweffect_params
+            # The target ROM defines this type and grants its audio HAL access.
+            # A generic device label should not require broader device access.
+            chcon u:object_r:audio_hweffect_device:s0 /dev/sony_hweffect_params || printf 'Hardware effect node label failed; inspect policy diagnostics.\n'
         }
     fi
 fi

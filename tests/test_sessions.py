@@ -11,7 +11,7 @@ class AndroidFixture(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
         self.module=self.root/'module';self.module.mkdir()
-        for p in ['system/bin/sefx','sefx/lib.sh','sefx/sessions.awk','module.prop']:
+        for p in ['system/bin/sefx','sefx/lib.sh','sefx/evidence.sh','sefx/sessions.awk','module.prop']:
             q=self.module/p;q.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(REPO/p,q)
         self.bin=self.root/'bin';self.bin.mkdir()
         fake=self.root/'fake.py';shutil.copyfile(REPO/'tests/fake_android.py',fake);fake.chmod(0o755)

@@ -1,6 +1,6 @@
 id=SoundEnhancement
 name=Sony Sound Enhancement - Session Manager
-version=v2.0.0-rc.2
-versionCode=20002
+version=v2.0.0-rc.3
+versionCode=20003
 author=Rei Ryuki the Fixer (Sony port); DanielDmas fork
 description=Android 12L lilac candidate: Sony EQ with automatic session reconnection, explicit player targeting and diagnostics. Magisk Action opens the panel while music plays. Processing must be checked on the phone.

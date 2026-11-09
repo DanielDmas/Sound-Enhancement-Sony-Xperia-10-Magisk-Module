@@ -4,6 +4,19 @@ from unittest import mock
 from test_sessions import AndroidFixture, record, PLAYER, SONY, REPO
 
 class Recovery(AndroidFixture):
+    def test_newer_lineage_android_api_is_refused_before_intents(self):
+        self.android['props']={'ro.build.version.sdk':'35'};self.save()
+        r=self.runfx('attach',expected=3);self.assertIn('API 32',r.stderr);self.assertFalse(self.broadcasts())
+
+    def test_wrong_device_is_refused_before_intents(self):
+        self.android['props']={'ro.product.device':'poplar'};self.save()
+        self.runfx('attach',expected=3);self.assertFalse(self.broadcasts())
+    def test_recover_rebuilds_profile_and_opens_panel_without_changing_config(self):
+        self.runfx('sync');self.clearcalls();before=(self.state/'config').read_bytes()
+        self.runfx('recover')
+        self.assertEqual(len(self.broadcasts('CLOSE')),1);self.assertEqual(len(self.broadcasts('OPEN')),1)
+        self.assertTrue(any(x[1]=='start-activity' for x in self.calls('am')))
+        self.assertEqual((self.state/'config').read_bytes(),before)
     def wait_for_launch(self):
         for _ in range(50):
             if self.calls('nohup'):return

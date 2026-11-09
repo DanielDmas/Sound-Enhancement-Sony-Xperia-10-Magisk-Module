@@ -15,10 +15,12 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 sefx_init || exit $?
 case "${1:-open}" in
-    open)
+    open|recover)
         printf 'Runtime: %s\n' "$SEFX_RUNTIME_VERSION"
         sefx_ready || exit $?
-        sefx_sync manual; open_result=$?
+        open_mode=manual
+        [ "${1:-open}" != recover ] || open_mode=repair
+        sefx_sync "$open_mode"; open_result=$?
         if [ "$open_result" = 0 ]; then sefx_panel "${2:-}"; open_result=$?; fi
         sefx_start_watch || { [ "$open_result" != 0 ] || open_result=3; }
         exit "$open_result" ;;
@@ -34,6 +36,7 @@ case "${1:-open}" in
     help|-h|--help)
         printf '%s\n' 'sefx            Attach to active media and open Sony settings' \
             'sefx open PKG   Select one active player when several are playing' \
+            'sefx recover    Repair known current profiles, then open settings' \
             'sefx attach     Reattach without opening settings' \
             'sefx refresh    Close/reopen managed sessions; preserve presets' \
             'sefx status     Show watcher and current session evidence' \

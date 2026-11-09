@@ -42,7 +42,7 @@ if name=='pidof':
  value=state.get('pids',{}).get(args[0],'')
  finish(value,0 if value else 1)
 if name=='getenforce':finish('Enforcing')
-if name=='getprop':finish({'ro.product.device':'lilac','ro.build.version.sdk':'32','sys.boot_completed':'1'}.get(args[0],''))
+if name=='getprop':finish(state.get('props',{}).get(args[0],{'ro.product.device':'lilac','ro.product.model':'G8441','ro.build.version.sdk':'32','sys.boot_completed':'1'}.get(args[0],'')))
 if name=='appops':finish('RECORD_AUDIO: allow')
 if name=='logcat':finish('Diagnostic log fixture')
 if name in ['resetprop','killall']:finish('')

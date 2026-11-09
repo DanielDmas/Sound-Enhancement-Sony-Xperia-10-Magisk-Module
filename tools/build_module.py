@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Deterministic Magisk ZIP using the repository's supplied binary payloads."""
-import argparse, hashlib, json, os, pathlib, stat, subprocess, tempfile, zipfile
+import argparse, hashlib, json, os, pathlib, runpy, stat, subprocess, tempfile, zipfile
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 PREFIXES=('META-INF/','system/','system_support/','system_dolby/','system_dolby_36dB/',
@@ -28,6 +28,8 @@ def inputs(root=ROOT):
     return files
 
 def validate_payload(files,root=ROOT):
+    policy=runpy.run_path(str(root/'tools/policy_check.py'),run_name='_policy_check')
+    policy['check'](files['sepolicy.rule'].decode(),json.loads((root/'tools/policy_baseline.json').read_text()))
     manifest=json.loads((root/'tools/payload_manifest.json').read_text())
     for name,want in manifest.items():
         if name not in files:raise ValueError('Missing protected upstream payload: '+name)
@@ -87,5 +89,5 @@ def build(output,root=ROOT):
     return {'path':str(output),'bytes':output.stat().st_size,'sha256':digest,'files':len(files),'protected_payloads_verified':protected,'hardware_tested':False}
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--output',default=str(ROOT/'dist/SoundEnhancement-v2.0.0-rc.2-lilac-12L.zip'))
+    parser=argparse.ArgumentParser();parser.add_argument('--output',default=str(ROOT/'dist/SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip'))
     print(json.dumps(build(parser.parse_args().output),indent=2))

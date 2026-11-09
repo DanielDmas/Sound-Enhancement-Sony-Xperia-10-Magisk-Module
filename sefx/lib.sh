@@ -3,7 +3,8 @@
 SONY_PACKAGE=com.sonyericsson.soundenhancement
 SONY_RECEIVER=$SONY_PACKAGE/.AudioEffectControlReceiver
 SONY_PANEL=$SONY_PACKAGE/.SoundEnhancementRedirector
-SEFX_RUNTIME_VERSION=v2.0.0-rc.2
+. "$MODDIR/sefx/evidence.sh"
+SEFX_RUNTIME_VERSION=v2.0.0-rc.3
 SEFX_STATE_DIR=${SEFX_STATE_DIR:-/data/adb/sony-audio-manager}
 SEFX_PROC_DIR=${SEFX_PROC_DIR:-/proc}
 SEFX_LOCK_HELD=0
@@ -30,6 +31,15 @@ sefx_write() {
 sefx_ready() {
     if [ -f "$MODDIR/update" ]; then sefx_error 'Upgrade staged: reboot normally before using the module.'; return 6; fi
     if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then sefx_error 'Module disabled/pending removal; reboot after enabling.'; return 3; fi
+    if [ "${SEFX_TARGET_OK:-0}" != 1 ]; then
+        target_device=$(sefx_android getprop ro.product.device 2>/dev/null)
+        target_api=$(sefx_android getprop ro.build.version.sdk 2>/dev/null)
+        if [ "$target_device" != lilac ] || [ "$target_api" != 32 ]; then
+            sefx_error "This build requires G8441/lilac on Android 12L API 32; detected device=$target_device API=$target_api."
+            return 3
+        fi
+        SEFX_TARGET_OK=1
+    fi
 }
 sefx_log() {
     [ -d "$SEFX_STATE_DIR" ] || return 0
@@ -45,7 +55,7 @@ sefx_init() {
     [ ! -L "$SEFX_STATE_DIR" ] || { printf 'Refusing symlink state directory.\n' >&2; return 1; }
     mkdir -p "$SEFX_STATE_DIR" || return 1
     chmod 0700 "$SEFX_STATE_DIR" || return 1
-    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt; do
+    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt unresolved-uids; do
         if [ -L "$SEFX_STATE_DIR/$state_file" ] || [ -d "$SEFX_STATE_DIR/$state_file" ]; then
             printf 'Refusing unsafe state file: %s\n' "$state_file" >&2; return 3
         fi
@@ -144,14 +154,15 @@ sefx_collect() {
     grep -q '^package:.* uid:[0-9]' "$SEFX_RUN/packages.txt" || { sefx_error 'Unsupported package ownership output.'; return 3; }
     sefx_android_timeout 6 ps -A -o PID,NAME > "$SEFX_RUN/processes.txt" 2>/dev/null || : > "$SEFX_RUN/processes.txt"
     : > "$SEFX_RUN/unresolved" || return 3
-    if ! awk -v user="$SEFX_USER" -v sony="$SONY_PACKAGE" -v meta="$SEFX_RUN/unresolved" -f "$MODDIR/sefx/sessions.awk" \
+    : > "$SEFX_RUN/unresolved-uids" || return 3
+    if ! awk -v user="$SEFX_USER" -v sony="$SONY_PACKAGE" -v meta="$SEFX_RUN/unresolved" -v uncertain="$SEFX_RUN/unresolved-uids" -f "$MODDIR/sefx/sessions.awk" \
         "$SEFX_RUN/packages.txt" "$SEFX_RUN/processes.txt" "$SEFX_RUN/audio.txt" > "$SEFX_RUN/parsed.tsv"; then
         sefx_error 'Session parser failed.'; return 3
     fi
     LC_ALL=C sort -u "$SEFX_RUN/parsed.tsv" > "$SEFX_RUN/current.tsv" || return 3
     if [ -s "$SEFX_RUN/unresolved" ]; then
-        printf 'Active media has an unresolved session/owner; preserving previous attachments. No global-session fallback is guessed.\n'
-        return 4
+        printf 'Active media has an unresolved session/owner; preserving that UID\047s prior attachments. No global-session fallback is guessed.\n'
+        [ -s "$SEFX_RUN/current.tsv" ] || return 4
     fi
 }
 sefx_valid_record() {
@@ -187,7 +198,12 @@ sefx_sync() {
     sefx_ready || return $?
     sefx_acquire_lock || { sefx_error 'Another refresh is running; retry shortly.'; return 5; }
     sefx_collect; sync_result=$?
-    if [ "$sync_result" != 0 ]; then sefx_release_lock; return "$sync_result"; fi
+    if [ "$sync_result" != 0 ]; then
+        if [ "$sync_result" = 4 ] && [ -f "$SEFX_RUN/unresolved-uids" ]; then
+            cp "$SEFX_RUN/unresolved-uids" "$SEFX_RUN/uncertain.next" && sefx_write "$SEFX_RUN/uncertain.next" "$SEFX_STATE_DIR/unresolved-uids" || sync_result=3
+        fi
+        sefx_release_lock; return "$sync_result"
+    fi
     if ! awk -v p="package:$SONY_PACKAGE" '$1==p {found=1} END {exit !found}' "$SEFX_RUN/packages.txt"; then
         sefx_error 'Sony app not installed for this user; check module mounts and reboot.'; sefx_release_lock; return 3
     fi
@@ -215,7 +231,10 @@ sefx_sync() {
         sefx_valid_record || continue
         [ "$((rec_uid/100000))" = "$SEFX_USER" ] || continue
         sync_old_row="$rec_pkg|$rec_uid|$rec_pid|$rec_sid|$rec_type|$rec_device"
-        if [ "$sync_mode" = repair ] || [ "$sync_context" != "$sync_before" ] || ! grep -Fxq "$sync_old_row" "$SEFX_RUN/current.tsv"; then
+        if grep -Fxq "$rec_uid" "$SEFX_RUN/unresolved-uids"; then
+            printf '%s\n' "$sync_old_row" >> "$SEFX_RUN/attached.next"; continue
+        fi
+        if [ "$sync_mode" = repair ] || [ "$sync_context" != "$sync_before" ] || grep -Fxq "$rec_uid" "$SEFX_STATE_DIR/unresolved-uids" 2>/dev/null || ! grep -Fxq "$sync_old_row" "$SEFX_RUN/current.tsv"; then
             if ! grep -Fxq "$rec_pkg" "$SEFX_RUN/closed-packages.txt" && ! grep -Fxq "$rec_pkg" "$SEFX_RUN/failed-packages.txt"; then
                 if sefx_intent CLOSE; then printf '%s\n' "$rec_pkg" >> "$SEFX_RUN/closed-packages.txt"
                 else sync_result=3; printf '%s\n' "$rec_pkg" >> "$SEFX_RUN/failed-packages.txt"
@@ -228,7 +247,7 @@ sefx_sync() {
         [ -n "$rec_pkg" ] || continue
         sync_row="$rec_pkg|$rec_uid|$rec_pid|$rec_sid|$rec_type|$rec_device"
         if grep -Fxq "$rec_pkg" "$SEFX_RUN/failed-packages.txt"; then continue; fi
-        if [ "$sync_mode" = repair ] && ! grep -Fxq "$rec_pkg" "$SEFX_RUN/closed-packages.txt"; then
+        if [ "$sync_mode" = repair ] && ! grep -Fxq "$rec_uid" "$SEFX_RUN/unresolved-uids" && ! grep -Fxq "$rec_pkg" "$SEFX_RUN/closed-packages.txt"; then
             if sefx_intent CLOSE; then printf '%s\n' "$rec_pkg" >> "$SEFX_RUN/closed-packages.txt"
             else sync_result=3; printf '%s\n' "$rec_pkg" >> "$SEFX_RUN/failed-packages.txt"; printf '%s\n' "$sync_row" >> "$SEFX_RUN/attached.next"; continue
             fi
@@ -241,7 +260,7 @@ sefx_sync() {
         else sync_result=3
         fi
     done < "$SEFX_RUN/current.tsv"
-    if ! sefx_write "$SEFX_RUN/attached.next" "$sync_old"; then
+    if ! LC_ALL=C sort -u "$SEFX_RUN/attached.next" > "$SEFX_RUN/attached.sorted" || ! sefx_write "$SEFX_RUN/attached.sorted" "$sync_old"; then
         sefx_error 'Cannot commit attachment state.'; sefx_release_lock; return 3
     fi
     # Preserve pre-dispatch context: restarts during delivery stay observable.
@@ -255,6 +274,7 @@ sefx_sync() {
     fi
     [ ! -f "$SEFX_RUN/am.txt" ] || { cp -f "$SEFX_RUN/am.txt" "$SEFX_RUN/last-am.txt" && sefx_write "$SEFX_RUN/last-am.txt" "$SEFX_STATE_DIR/last-am.txt"; } || sync_result=3
     cp -f "$SEFX_RUN/current.tsv" "$SEFX_RUN/detected.tsv" && sefx_write "$SEFX_RUN/detected.tsv" "$SEFX_STATE_DIR/detected.tsv" || sync_result=3
+    cp "$SEFX_RUN/unresolved-uids" "$SEFX_RUN/uncertain.next" && sefx_write "$SEFX_RUN/uncertain.next" "$SEFX_STATE_DIR/unresolved-uids" || sync_result=3
     SEFX_COUNT=$(wc -l < "$sync_old" | tr -d ' ')
     printf 'Detected %s session(s); sent %s OPEN request(s).\n' "$(wc -l < "$SEFX_RUN/current.tsv" | tr -d ' ')" "$sync_sent"
     sefx_release_lock
@@ -369,6 +389,7 @@ sefx_auto() {
 sefx_status() {
     printf 'Runtime: %s\nDisplayed module metadata:\n' "$SEFX_RUNTIME_VERSION"
     cat "$MODDIR/module.prop"
+    printf '\nDevice=%s Model=%s AndroidAPI=%s; supported target=G8441/lilac API32\n' "$(sefx_android getprop ro.product.device 2>/dev/null)" "$(sefx_android getprop ro.product.model 2>/dev/null)" "$(sefx_android getprop ro.build.version.sdk 2>/dev/null)"
     [ ! -f "$MODDIR/update" ] || printf '\nUPGRADE STAGED: reboot required.\n'
     printf '\nSELinux: '; sefx_android getenforce 2>/dev/null || true
     if sefx_daemon_pid; then printf 'Supervisor: running, PID %s\n' "$daemon_pid"; else printf 'Supervisor: not running\n'; fi
@@ -382,10 +403,12 @@ sefx_status() {
 }
 sefx_report_section() {
     report_heading=$1; shift
+    report_cap=65536
+    [ "$report_heading" != 'AUDIO FLINGER' ] || report_cap=524288
     printf '\n--- %s ---\n' "$report_heading"
     rm -f "$SEFX_RUN/report-status"
-    (sefx_android_timeout 8 "$@"; printf '%s\n' "$?" > "$SEFX_RUN/report-status") 2>&1 | head -c 65536
-    printf '\n[exit=%s; section limit=65536 bytes]\n' "$(cat "$SEFX_RUN/report-status" 2>/dev/null)"
+    (sefx_android_timeout 8 "$@"; printf '%s\n' "$?" > "$SEFX_RUN/report-status") 2>&1 | head -c "$report_cap"
+    printf '\n[exit=%s; section limit=%s bytes]\n' "$(cat "$SEFX_RUN/report-status" 2>/dev/null)" "$report_cap"
 }
 sefx_diagnostics() {
     report_file=$SEFX_RUN/report.txt
@@ -403,8 +426,10 @@ sefx_diagnostics() {
         sefx_report_section 'AUDIO FLINGER' dumpsys media.audio_flinger
         sefx_report_section 'MEDIA SESSIONS' dumpsys media_session
         sefx_report_section 'RECENT LOGCAT' logcat -d -t 250
+        sefx_policy_evidence
+        sefx_configuration_evidence
     } > "$report_file" 2>&1
-    head -c 1048576 "$report_file" > "$SEFX_RUN/diagnostics.txt" && sefx_write "$SEFX_RUN/diagnostics.txt" "$SEFX_STATE_DIR/diagnostics.txt" || return 3
+    head -c 4194304 "$report_file" > "$SEFX_RUN/diagnostics.txt" && sefx_write "$SEFX_RUN/diagnostics.txt" "$SEFX_STATE_DIR/diagnostics.txt" || return 3
     chmod 0600 "$SEFX_STATE_DIR/diagnostics.txt"
     printf 'Report: %s/diagnostics.txt\n' "$SEFX_STATE_DIR"
     if [ "$1" = export ]; then

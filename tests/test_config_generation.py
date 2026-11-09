@@ -1,5 +1,5 @@
 """Exercise real shell config edits and parse output structurally."""
-import os, pathlib, shutil, subprocess, tempfile, unittest, xml.etree.ElementTree as ET
+import fcntl, os, pathlib, shutil, subprocess, tempfile, unittest, xml.etree.ElementTree as ET
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 BASE='''<?xml version="1.0" encoding="UTF-8"?>
 <audio_effects_conf version="2.0" xmlns="http://schemas.android.com/audio/audio_effects_conf/v2_0">
@@ -66,10 +66,15 @@ class ConfigTransaction(unittest.TestCase):
     def tearDown(self):self.tmp.cleanup()
     def configure(self,expected=0):
         r=subprocess.run([*self.shell,str(self.module/'sefx/configure.sh')],env=self.env,text=True,capture_output=True,timeout=20)
-        self.assertEqual(r.returncode,expected,r.stdout+r.stderr);self.assertFalse(list(self.module.glob('.config.*')));return r
+        self.assertEqual(r.returncode,expected,r.stdout+r.stderr)
+        self.assertFalse([p for p in self.module.glob('.config.*') if p.is_dir()]);return r
     def test_success_commits_valid_output_without_touching_rom(self):
         self.configure();root=ET.parse(self.target).getroot();self.assertEqual(self.original.read_text(),BASE)
         self.assertEqual(len(ConfigGeneration.elements(root,'effectProxy')),1)
+    def test_concurrent_configuration_does_not_touch_live_files(self):
+        with (self.module/'.config.flock').open('w') as fd:
+            fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);self.configure(expected=5)
+        self.assertEqual(self.target.read_text(),'previous working config')
     def test_generation_error_preserves_all_previous_files(self):
         (self.module/'.aml.sh').write_text('exit 1\n');self.configure(expected=1)
         self.assertEqual(self.target.read_text(),'previous working config')
@@ -84,6 +89,16 @@ class ConfigTransaction(unittest.TestCase):
         fake=bindir/'mv';fake.write_text('#!/bin/sh\ncase "$*" in *audio_effects.xml.next*) exit 1 ;; esac\nexec /usr/bin/mv "$@"\n');fake.chmod(0o755)
         self.env['PATH']=str(bindir)+os.pathsep+self.env['PATH']
         self.configure(expected=1);self.assertEqual(self.target.read_text(),'previous working config')
+
+    def test_failed_restore_keeps_backup_for_recovery(self):
+        bindir=self.root/'bin';bindir.mkdir()
+        fake=bindir/'mv';fake.write_text('#!/bin/sh\ncase "$*" in *audio_effects.xml.next*) /usr/bin/mv "$@"; exit 1 ;; */backup/*) exit 1 ;; esac\nexec /usr/bin/mv "$@"\n');fake.chmod(0o755)
+        self.env['PATH']=str(bindir)+os.pathsep+self.env['PATH']
+        r=subprocess.run([*self.shell,str(self.module/'sefx/configure.sh')],env=self.env,text=True,capture_output=True,timeout=20)
+        self.assertNotEqual(r.returncode,0)
+        backups=list(self.module.glob('.config.*/backup/system/vendor/etc/audio_effects.xml'))
+        self.assertEqual(len(backups),1,r.stderr);self.assertEqual(backups[0].read_text(),'previous working config')
+        self.assertTrue(self.target.is_file())
 
 @unittest.skipUnless(os.environ.get('SEFX_BUSYBOX'),'requires official Magisk BusyBox')
 class BusyboxConfigTransaction(unittest.TestCase):

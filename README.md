@@ -1,32 +1,31 @@
 # Sony Sound Enhancement: Android 12L session manager
 
-## RC2 audit candidate - preserve current RC1 testing
+## RC3 candidate for G8441 / LineageOS 19.1 (Android 12L)
 
-**[Read the audit, repairs and remaining release gates](docs/AUDIT.md).**
+**[RC3 changes, installation and troubleshooting](docs/RC3.md)** | [Full audit/gap map](docs/AUDIT.md).
 
-This branch builds `SoundEnhancement-v2.0.0-rc.2-lilac-12L.zip`, an unvalidated
+This branch builds `SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip`, an unvalidated
 phone candidate with additional recovery, configuration and packaging fixes.
 
-[Open RC2 build runs](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/workflows/ci.yml?query=branch%3Aaudit%2Frc2-hardening-20261109).
+[Open RC2 build runs](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/workflows/ci.yml?query=branch%3Aaudit%2Frc3-recovery-validation-20261109).
 Select a successful run, open **Artifacts**, download
-**SoundEnhancement-v2.0.0-rc.2-lilac-12L**, and extract the outer archive once.
+**SoundEnhancement-v2.0.0-rc.3-lilac-12L**, and extract the outer archive once.
 Install the **inner module ZIP** in Magisk and retain its checksum file.
 GitHub's **Code > Download ZIP** is source, not an installer.
 
-The unchanged [RC1 reference build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)
-remains available for the current phone test. Finish that test before changing
-versions. Its artifact is named `SoundEnhancement-v2.0.0-rc.1-lilac-12L`.
+The saved [RC1 reference build](https://github.com/DanielDmas/Sound-Enhancement-Sony-Xperia-10-Magisk-Module/actions/runs/42572917815)
+remains available as an earlier reference. Its artifact is named `SoundEnhancement-v2.0.0-rc.1-lilac-12L`.
 
-This fork repairs the activation/lifecycle scripts around Rei Ryuki's Xperia 10 Sony audio port. The installable candidate is **v2.0.0-rc.2**, for **Sony Xperia XZ1 Compact G8441 / lilac, Android 12L / API 32, Magisk**. Its Sony apps, framework JARs and native libraries are unchanged. This is a root module, not a ROM or a DRM-key restore.
+This fork repairs the activation/lifecycle scripts around Rei Ryuki's Xperia 10 Sony audio port. The installable candidate is **v2.0.0-rc.3**, for **Sony Xperia XZ1 Compact G8441 / lilac, Android 12L / API 32, Magisk**. Its Sony apps, framework JARs and native libraries are unchanged. This is a root module, not a ROM or a DRM-key restore.
 
 The previous local manual-launch version worked initially on a G8441, then sometimes opened controls without changing the sound. This fork fixes script defects that can cause incorrect or lost session attachment. No physical Xperia is connected for acoustic verification of the repaired build; automated tests and a successful Android intent are not proof of audible DSP processing.
 
 ## Install over the existing manual-launch module
 
 1. Keep your old `SoundEnhancement-v1.2.4-manual-launch.zip` and the clean `boot.img` from your current ROM as a rollback kit.
-2. Download the built **`SoundEnhancement-v2.0.0-rc.2-lilac-12L.zip`** and its SHA-256 file. Do not install GitHub's generic source-code ZIP. GitHub Actions also creates a wrapper artifact ZIP; extract that wrapper once and install the module ZIP inside it.
+2. Download the built **`SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip`** and its SHA-256 file. Do not install GitHub's generic source-code ZIP. GitHub Actions also creates a wrapper artifact ZIP; extract that wrapper once and install the module ZIP inside it.
 3. In **Magisk > Modules > Install from storage**, choose the new module ZIP. The ID stays `SoundEnhancement`, so this updates the existing module. Do not remove the old module first or wipe the phone. Check for a successful installation and then restart Android normally.
-4. Play music through normal Android audio output. Open **Magisk > Modules > Sony Sound Enhancement - Session Manager > Action**. It should name the player/session, request attachment, and open Sony's panel for that player.
+4. Play music through normal Android audio output. Open **Magisk > Modules > Sony Sound Enhancement - Session Manager > Action** if recovery is needed. RC3 repairs known current profiles, names the player/session and opens Sony's panel.
 5. For the listening check, switch **ClearAudio+ and DSEE HX off**, if present, and compare flat EQ with a strong manual bass/treble cut at moderate volume. Turn off the player's own EQ during this test. Then try your usual wired/Bluetooth route separately.
 
 You do not need TWRP, another ROM flash, another Magisk boot-image patch, Tasker, AML or Dolby for this upgrade. The focused installer refuses an incompatible model/API or missing 32-bit support instead of producing a knowingly nonworking partial installation. It ignores old shared-storage `optionals.prop` settings, preserves Sony app data on upgrade and does not remove unrelated modules.
@@ -44,7 +43,7 @@ You do not need TWRP, another ROM flash, another Magisk boot-image patch, Tasker
 
 ## Automatic reconnection and limits
 
-Auto reconnect is on by default. The watcher polls every **5 seconds during detected playback**, every **10 seconds when idle/erroring**, and renews requests after **60 seconds**. It rebuilds affected sessions after detected route/server/process changes. It holds no wake lock: Android sleep/Doze can delay polling, and reattachment is not instantaneous. Preferences are retained in `/data/adb/sony-audio-manager/config` with private permissions. RC2 migrates old module-local `.sefx/config` once. A supervisor restarts a crashed watcher; boot, Action or `sefx auto on` can start the supervisor.
+Auto reconnect is on by default. The watcher polls every **5 seconds during detected playback**, every **10 seconds when idle/erroring**, and renews requests after **60 seconds**. It rebuilds affected sessions after detected route/server/process changes. It holds no wake lock: Android sleep/Doze can delay polling, and reattachment is not instantaneous. Preferences are retained in `/data/adb/sony-audio-manager/config` with private permissions. This series migrates old module-local `.sefx/config` once. A supervisor restarts a crashed watcher; boot, Action or `sefx auto on` can start the supervisor.
 
 The Sony port can still be limited by the ROM's audio HAL, exclusive/direct/bit-perfect output, another app owning the effects, or Sony's proprietary implementation. A visible control, received broadcast, DSEE capability string or running watcher does not prove the samples are being processed. This build targets the known Android 12L setup, not arbitrary LineageOS 22/23 installations. Lost DRM keys are not restored.
 
@@ -54,8 +53,9 @@ Use an authorized ADB connection, for example `adb shell su -c 'sefx status'`. O
 
 | Command | Purpose |
 | --- | --- |
-| `sefx` | Reattach active media and open Sony's panel. Same as Magisk Action. |
+| `sefx` | Reattach active media and open Sony's panel. Attach and open; Magisk Action additionally performs repair. |
 | `sefx open org.example.player` | Open settings for one specific active player when several are playing. |
+| `sefx recover` | Repair known current profiles and open Sony settings. Magisk Action uses this. |
 | `sefx attach` | Reattach without opening the UI. |
 | `sefx refresh` | Close/reopen managed active sessions, retaining presets and app data. |
 | `sefx status` | Show watcher state, detected players and last successful delivery requests. |
@@ -65,7 +65,7 @@ Use an authorized ADB connection, for example `adb shell su -c 'sefx status'`. O
 
 ## If settings still make no audible difference
 
-1. Keep music playing; press Action again. Read the player/session and any error instead of judging only whether the UI opened.
+1. Keep music playing and capture `sefx report` before changing apps or pressing Action. Then press Action for repair and compare the result; opening the UI alone does not prove processing.
 2. Switch ClearAudio+ / DSEE HX off for the manual-EQ test. Disable the player's own EQ and use normal Android output; exclusive USB/direct output may bypass system effects. Test wired first, then Bluetooth separately.
 3. Run `adb shell su -c "sefx refresh"` and test again. This rebuilds the detected sessions without deleting your settings or rebooting the phone.
 4. Run `adb shell su -c "sefx status"`. If needed, enable the watcher with `adb shell su -c "sefx auto on"`.
@@ -88,6 +88,6 @@ python3 -m unittest discover -s tests -v
 python3 tools/build_module.py
 ```
 
-The builder creates `dist/SoundEnhancement-v2.0.0-rc.2-lilac-12L.zip` and its `.zip.sha256` file. It verifies 55 protected upstream APK/JAR/ELF files, shell syntax, ZIP CRCs and deterministic packaging. No Android SDK, Java compiler or Tasker is needed because the supplied proprietary binaries are reused, not rebuilt. The test suite uses realistic Android 12L fixtures and command-boundary fakes; it does not emulate the hardware DSP. GitHub Actions runs tests and saves the candidate artifact.
+The builder creates `dist/SoundEnhancement-v2.0.0-rc.3-lilac-12L.zip` and its `.zip.sha256` file. It verifies 55 protected upstream APK/JAR/ELF files, shell syntax, ZIP CRCs and deterministic packaging. No Android SDK, Java compiler or Tasker is needed because the supplied proprietary binaries are reused, not rebuilt. The extended CI also runs actual Magisk BusyBox integration, the policy reduction invariant and pinned Yoshino/Flamefire configuration checks. It does not emulate the hardware DSP. GitHub Actions runs tests and saves the candidate artifact.
 
 See [docs/AUDIT.md](docs/AUDIT.md) for the RC2 repair/gap map, alternatives, primary references and phone acceptance matrix. [docs/INVESTIGATION.md](docs/INVESTIGATION.md) retains the RC1 investigation. Upstream scripts are MIT-licensed; Sony/Dolby retain their rights in the supplied apps/libraries. Do not interpret the scripts' license as a license to proprietary payload source code.
