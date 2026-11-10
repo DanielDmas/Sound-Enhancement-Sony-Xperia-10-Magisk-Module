@@ -1,5 +1,9 @@
 # RC2 engineering audit and gap map
 
+**Current candidate:** [RC5 native evidence and bounded repair](RC5.md). [Follow-up corrections to global/session assumptions](POST-RC4-VERIFICATION.md).
+
+**RC4 fix:** [RC4 command transport regression, old-version comparison and installation](RC4.md). RC3 failed package ownership on the target phone; its previous fixture passes missed the Binder FD boundary.
+
 RC3 follow-up: [changes, new verification and current remaining gates](RC3.md). The sections below preserve the RC2 assessment.
 
 Date: 9 November 2026. Target: Xperia XZ1 Compact G8441/lilac, Flamefire
@@ -111,7 +115,7 @@ These remain open; fixtures cannot close them. RC2 remains a draft candidate.
 | Privileged AudioPlaybackCallback helper | Event-driven updates; potentially lower polling cost/latency | Promising follow-up, not a drop-in ordinary app: normal callbacks redact identity/session data, and relevant access is hidden/system API. Requires a build, permission/lifecycle design and ROM qualification. |
 | Player-sent OPEN/CLOSE intents alone | Native integration, less background work | Useful, insufficient if a player omits them or Sony loses state. Explicit repair remains useful. |
 | Repeated Sony/audioserver kills or SELinux toggling | May mask lost state temporarily | Rejected for routine recovery: disruptive and not causal diagnosis. Inherited single boot audioserver restart remains pending ROM qualification. |
-| Force global session zero | Could match some vendor implementations | Not selected without target evidence; global insert use is deprecated and may target the wrong chain. |
+| Force global session zero | Could match some vendor implementations | The manager rejects zero as a guessed player ID, but the inherited Sony APK default already forces its native effect to session zero. See the follow-up correction; do not equate intent IDs with native attachment. |
 | ROM-integrated vendor effect service | Better init, ownership, policy and schema control | Strongest long-term integration if maintaining the ROM/licensed components is feasible; larger scope than this module. |
 
 ## Reproduce engineering checks

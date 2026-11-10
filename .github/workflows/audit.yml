@@ -8,13 +8,13 @@ permissions:
 jobs:
   toolchain:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Verify actual Magisk BusyBox and static analysis tools
         run: python3 tools/audit_toolchain.py
       - name: Gate maintained scripts on ShellCheck warnings
-        run: audit-tools/shellcheck -s busybox -S warning action.sh service.sh system/bin/sefx sefx/lib.sh sefx/evidence.sh sefx/configure.sh copy.sh uninstall.sh
+        run: audit-tools/shellcheck -s busybox -S warning action.sh service.sh system/bin/sefx sefx/lib.sh sefx/evidence.sh sefx/health.sh sefx/configure.sh copy.sh uninstall.sh
       - name: Validate pinned Yoshino and Flamefire configuration sources
         run: sudo env SEFX_BUSYBOX="$PWD/audit-tools/busybox" python3 tools/validate_upstream_configs.py
       - name: Exercise actual Magisk BusyBox with Android command fixtures

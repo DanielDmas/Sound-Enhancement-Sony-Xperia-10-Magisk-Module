@@ -1,5 +1,9 @@
 # RC3: G8441/lilac on LineageOS 19.1 / Android 12L
 
+**Superseded by [RC4](RC4.md).** RC3 failed package ownership discovery on
+the target phone. Its host tests missed the private-file descriptor boundary
+at Android Binder commands. Use RC4's installer and instructions for the fix.
+
 This build is for the European/international Xperia XZ1 Compact G8441, device
 codename lilac, Android 12L API 32. Magisk 31.1 is the runtime exercised in CI.
 It is an installable test candidate. Android 9, Android 15/16 and other Xperia

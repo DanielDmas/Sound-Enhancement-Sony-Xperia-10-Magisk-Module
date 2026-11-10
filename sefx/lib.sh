@@ -4,7 +4,8 @@ SONY_PACKAGE=com.sonyericsson.soundenhancement
 SONY_RECEIVER=$SONY_PACKAGE/.AudioEffectControlReceiver
 SONY_PANEL=$SONY_PACKAGE/.SoundEnhancementRedirector
 . "$MODDIR/sefx/evidence.sh"
-SEFX_RUNTIME_VERSION=v2.0.0-rc.3
+. "$MODDIR/sefx/health.sh"
+SEFX_RUNTIME_VERSION=v2.0.0-rc.5
 SEFX_STATE_DIR=${SEFX_STATE_DIR:-/data/adb/sony-audio-manager}
 SEFX_PROC_DIR=${SEFX_PROC_DIR:-/proc}
 SEFX_LOCK_HELD=0
@@ -23,8 +24,38 @@ sefx_android_path() {
     else command -v "$1"
     fi
 }
-sefx_android() { android_cmd=$(sefx_android_path "$1") || return 127; shift; "$android_cmd" "$@" 7>&- 8>&- 9>&-; }
-sefx_android_timeout() { android_limit=$1; shift; android_cmd=$(sefx_android_path "$1") || return 127; shift; sefx_timeout "$android_limit" "$android_cmd" "$@"; }
+sefx_android() { sefx_android_timeout 6 "$@"; }
+sefx_android_timeout() (
+    android_limit=$1; shift
+    case "$android_limit" in ''|*[!0-9]*) return 3 ;; esac
+    [ "${#android_limit}" -le 3 ] && [ "$android_limit" -ge 1 ] && [ "$android_limit" -le 120 ] || return 3
+    android_drain_limit=$((android_limit+2))
+    android_cmd=$(sefx_android_path "$1") || return 127
+    shift
+    [ -n "$SEFX_RUN" ] && [ -d "$SEFX_RUN" ] || {
+        printf 'Android command transport not initialized.\n' >&2; return 3
+    }
+    android_status=$(mktemp "$SEFX_RUN/android-status.XXXXXXXX") || return 3
+    # cmd/pm/appops hand all three standard FDs to the Binder service. Passing
+    # root-private output files can fail SELinux FD checks in system_server.
+    # Relay stdout AND stderr through separate anonymous pipes; only our root
+    # shell/cat processes touch private files. Keep stderr out of parsed data.
+    # The sidecar preserves the command exit code instead of cat's exit code.
+    {
+        {
+            sefx_timeout "$android_limit" "$android_cmd" "$@" </dev/null 2>&1 1>&3 3>&-
+            printf '%s\n' "$?" > "$android_status"
+        } | sefx_timeout "$android_drain_limit" cat >&2
+        [ "$?" = 0 ] || printf '125\n' > "$android_status"
+    } 3>&1 | sefx_timeout "$android_drain_limit" cat
+    android_relay=$?
+    android_result=$(cat "$android_status")
+    rm -f "$android_status"
+    [ "$android_relay" = 0 ] || return 125
+    case "$android_result" in ''|*[!0-9]*) return 125 ;; esac
+    [ "$android_result" -le 255 ] || return 125
+    return "$android_result"
+) 7>&- 8>&- 9>&-
 sefx_write() {
     [ ! -L "$2" ] && [ ! -d "$2" ] && mv -f "$1" "$2"
 }
@@ -50,12 +81,28 @@ sefx_log() {
     printf '%s %s\n' "$(sefx_now)" "$*" >> "$SEFX_STATE_DIR/events.log"
 }
 sefx_error() { printf 'ERROR: %s\n' "$*" >&2; sefx_log "ERROR $*"; }
+sefx_command_error() {
+    command_label=$1; shift
+    sefx_error "$command_label"
+    {
+        printf '%s\n' "$command_label"
+        for command_output do
+            [ -f "$command_output" ] || continue
+            printf '\n--- %s ---\n' "${command_output##*/}"
+            head -c 3500 "$command_output"
+            printf '\n'
+        done
+    } | head -c 8192 > "$SEFX_RUN/last-command.next"
+    # This remains available after the per-invocation directory is removed.
+    sefx_write "$SEFX_RUN/last-command.next" "$SEFX_STATE_DIR/last-command.txt" || return 3
+    head -c 2048 "$SEFX_STATE_DIR/last-command.txt" | head -n 16 >&2
+}
 sefx_init() {
     if [ "$(id -u)" != 0 ]; then printf 'Root required: use Magisk Action or su -c sefx.\n' >&2; return 1; fi
     [ ! -L "$SEFX_STATE_DIR" ] || { printf 'Refusing symlink state directory.\n' >&2; return 1; }
     mkdir -p "$SEFX_STATE_DIR" || return 1
     chmod 0700 "$SEFX_STATE_DIR" || return 1
-    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt unresolved-uids; do
+    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt last-command.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt unresolved-uids engine-health.txt engine-recovery; do
         if [ -L "$SEFX_STATE_DIR/$state_file" ] || [ -d "$SEFX_STATE_DIR/$state_file" ]; then
             printf 'Refusing unsafe state file: %s\n' "$state_file" >&2; return 3
         fi
@@ -85,8 +132,11 @@ sefx_config() {
 }
 sefx_timeout() {
     sefx_limit=$1; shift
-    if command -v timeout >/dev/null 2>&1; then timeout -s KILL "$sefx_limit" "$@" 7>&- 8>&- 9>&-
-    elif [ -x /data/adb/magisk/busybox ]; then /data/adb/magisk/busybox timeout -s KILL "$sefx_limit" "$@" 7>&- 8>&- 9>&-
+    # BusyBox's detached timer can retain extra FDs even after it redirects
+    # standard I/O to null. In particular FD3 is the transport's saved stdout
+    # pipe; leaking it delays EOF until that timer notices its parent exited.
+    if command -v timeout >/dev/null 2>&1; then timeout -s KILL "$sefx_limit" "$@" 3>&- 7>&- 8>&- 9>&-
+    elif [ -x /data/adb/magisk/busybox ]; then /data/adb/magisk/busybox timeout -s KILL "$sefx_limit" "$@" 3>&- 7>&- 8>&- 9>&-
     else printf 'No timeout available; refusing an unbounded Android command.\n' >&2; return 127
     fi
 }
@@ -136,22 +186,28 @@ sefx_cleanup() {
     fi
 }
 sefx_current_user() {
-    SEFX_USER=$(sefx_android_timeout 6 cmd activity get-current-user 2>/dev/null)
-    case "$SEFX_USER" in ''|*[!0-9]*) sefx_error 'Cannot identify the foreground Android user.'; return 3 ;; esac
+    if sefx_android_timeout 6 cmd activity get-current-user > "$SEFX_RUN/user.txt" 2> "$SEFX_RUN/user.err"; then :
+    else
+        sefx_command_error "Cannot identify the foreground Android user (exit $?)." "$SEFX_RUN/user.err" "$SEFX_RUN/user.txt"; return 3
+    fi
+    SEFX_USER=$(cat "$SEFX_RUN/user.txt")
+    case "$SEFX_USER" in ''|*[!0-9]*) sefx_command_error 'Cannot identify the foreground Android user: nonnumeric output.' "$SEFX_RUN/user.err" "$SEFX_RUN/user.txt"; return 3 ;; esac
     [ "${#SEFX_USER}" -le 5 ] && [ "$SEFX_USER" -le 21474 ] || return 3
 }
 sefx_collect() {
     sefx_current_user || return $?
-    if ! sefx_android_timeout 8 dumpsys audio > "$SEFX_RUN/audio.txt" 2> "$SEFX_RUN/audio.err"; then
-        sefx_error 'Audio dump failed/timed out; preserving previous state.'; return 3
+    if sefx_android_timeout 8 dumpsys audio > "$SEFX_RUN/audio.txt" 2> "$SEFX_RUN/audio.err"; then :
+    else
+        sefx_command_error "Audio dump failed/timed out (exit $?); preserving previous state." "$SEFX_RUN/audio.err" "$SEFX_RUN/audio.txt"; return 3
     fi
     if ! grep -Eq '^[[:space:]]*players:' "$SEFX_RUN/audio.txt"; then
         sefx_error 'Unknown/empty audio dump: no sessions will be guessed or closed.'; return 3
     fi
-    if ! sefx_android_timeout 8 cmd package list packages -U --user "$SEFX_USER" > "$SEFX_RUN/packages.txt" 2> "$SEFX_RUN/packages.err"; then
-        sefx_error 'Could not read package ownership.'; return 3
+    if sefx_android_timeout 8 cmd package list packages -U --user "$SEFX_USER" > "$SEFX_RUN/packages.txt" 2> "$SEFX_RUN/packages.err"; then :
+    else
+        sefx_command_error "Could not read package ownership (exit $?)." "$SEFX_RUN/packages.err" "$SEFX_RUN/packages.txt"; return 3
     fi
-    grep -q '^package:.* uid:[0-9]' "$SEFX_RUN/packages.txt" || { sefx_error 'Unsupported package ownership output.'; return 3; }
+    grep -q '^package:.* uid:[0-9]' "$SEFX_RUN/packages.txt" || { sefx_command_error 'Unsupported package ownership output.' "$SEFX_RUN/packages.err" "$SEFX_RUN/packages.txt"; return 3; }
     sefx_android_timeout 6 ps -A -o PID,NAME > "$SEFX_RUN/processes.txt" 2>/dev/null || : > "$SEFX_RUN/processes.txt"
     : > "$SEFX_RUN/unresolved" || return 3
     : > "$SEFX_RUN/unresolved-uids" || return 3
@@ -160,6 +216,24 @@ sefx_collect() {
         sefx_error 'Session parser failed.'; return 3
     fi
     LC_ALL=C sort -u "$SEFX_RUN/parsed.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    # Sony keeps one holder per package. Keep the previously selected active
+    # record if possible, then choose one deterministic replacement. Opening
+    # every concurrent ID just replaces that package's native holder repeatedly.
+    cp "$SEFX_RUN/current.tsv" "$SEFX_RUN/all-players.tsv" || return 3
+    [ -f "$SEFX_STATE_DIR/attached.tsv" ] || : > "$SEFX_RUN/previous-empty"
+    collect_previous=$SEFX_STATE_DIR/attached.tsv
+    [ -f "$collect_previous" ] || collect_previous=$SEFX_RUN/previous-empty
+    awk -F'|' 'FILENAME==ARGV[1] {old[$0]=1;next} {if (!($1 in first)) {first[$1]=$0;order[++n]=$1} if ($0 in old) preferred[$1]=$0} END {for(i=1;i<=n;i++) {p=order[i];print (p in preferred ? preferred[p] : first[p])}}' \
+        "$collect_previous" "$SEFX_RUN/all-players.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    # Global mode has one shared engine. Several Sony package holders would
+    # compete for control of it, even though every handle belongs to Sony's PID.
+    # Keep one active owner; explicit `open PKG` can switch that owner.
+    collect_mode=$(sefx_android getprop ro.sony.global.effect 2>/dev/null)
+    if [ "$collect_mode" = true ]; then
+        cp "$SEFX_RUN/current.tsv" "$SEFX_RUN/package-players.tsv" || return 3
+        awk -F'|' -v selected="${SEFX_PREFERRED_PACKAGE:-}" 'FILENAME==ARGV[1] {old[$1]=1;next} {if(!n++) first=$0; if($1 in old && !keep) keep=$0; if($1==selected) explicit=$0} END {if(n) print (explicit ? explicit : (keep ? keep : first))}' \
+            "$collect_previous" "$SEFX_RUN/package-players.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    fi
     if [ -s "$SEFX_RUN/unresolved" ]; then
         printf 'Active media has an unresolved session/owner; preserving that UID\047s prior attachments. No global-session fallback is guessed.\n'
         [ -s "$SEFX_RUN/current.tsv" ] || return 4
@@ -180,17 +254,18 @@ sefx_intent() {
     intent_action=$1
     sefx_valid_record || { sefx_error 'Invalid cached session rejected.'; return 3; }
     intent_user=$((rec_uid/100000))
-    if ! sefx_android_timeout 8 cmd activity broadcast --user "$intent_user" --include-stopped-packages \
+    if sefx_android_timeout 8 cmd activity broadcast --user "$intent_user" --include-stopped-packages \
         -n "$SONY_RECEIVER" -a "android.media.action.${intent_action}_AUDIO_EFFECT_CONTROL_SESSION" \
         --es android.media.extra.PACKAGE_NAME "$rec_pkg" \
         --ei android.media.extra.AUDIO_SESSION "$rec_sid" \
-        --ei android.media.extra.CONTENT_TYPE "$rec_type" > "$SEFX_RUN/am.txt" 2>&1; then
-        sefx_error "Sony $intent_action broadcast failed: $rec_pkg session=$rec_sid."; return 3
+        --ei android.media.extra.CONTENT_TYPE "$rec_type" > "$SEFX_RUN/am.txt" 2>&1; then :
+    else
+        sefx_command_error "Sony $intent_action broadcast failed (exit $?): $rec_pkg session=$rec_sid." "$SEFX_RUN/am.txt"; return 3
     fi
     if grep -Eiq 'error:|exception|permission denial|unable to resolve' "$SEFX_RUN/am.txt"; then
-        sefx_error "Android rejected $intent_action; see last-am.txt."; return 3
+        sefx_command_error "Android rejected $intent_action." "$SEFX_RUN/am.txt"; return 3
     fi
-    grep -q 'Broadcast completed:' "$SEFX_RUN/am.txt" || { sefx_error "Unconfirmed $intent_action broadcast."; return 3; }
+    grep -q 'Broadcast completed:' "$SEFX_RUN/am.txt" || { sefx_command_error "Unconfirmed $intent_action broadcast." "$SEFX_RUN/am.txt"; return 3; }
     sefx_log "$intent_action user=$intent_user package=$rec_pkg session=$rec_sid type=$rec_type route=$rec_device"
 }
 sefx_sync() {
@@ -222,6 +297,15 @@ sefx_sync() {
     case "$sync_last" in 0|[1-9]*) ;; *) sync_last=0; sync_time_valid=0 ;; esac
     sync_force=0
     if [ "$sync_time_valid" = 0 ] || [ "$sync_mode" != auto ] || [ "$sync_context" != "$sync_before" ] || [ "$sync_stamp" -lt "$sync_last" ] || [ "$((sync_stamp-sync_last))" -ge "$SEFX_REFRESH" ]; then sync_force=1; fi
+    if [ "$sync_mode" = auto ] && [ -s "$SEFX_RUN/current.tsv" ]; then
+        sefx_health_decide "$sync_context" "$sync_before" "$sync_stamp" || { sefx_release_lock; return 3; }
+        [ "$HEALTH_REPAIR" != 1 ] || { sync_mode=repair; sync_force=1; }
+    elif [ "$sync_mode" = repair ]; then
+        # An explicit user repair starts a new bounded automatic-recovery budget.
+        rm -f "$SEFX_STATE_DIR/engine-recovery"
+    elif [ ! -s "$SEFX_RUN/current.tsv" ]; then
+        rm -f "$SEFX_STATE_DIR/engine-recovery" "$SEFX_STATE_DIR/engine-health.txt"
+    fi
     sync_result=0; sync_sent=0
     : > "$SEFX_RUN/closed-packages.txt"
     : > "$SEFX_RUN/failed-packages.txt"
@@ -291,14 +375,15 @@ sefx_panel() {
     fi
     IFS='|' read -r rec_pkg rec_uid rec_pid rec_sid rec_type rec_device < "$SEFX_RUN/panel.tsv"
     sefx_valid_record || { sefx_error 'No usable session for the panel.'; return 4; }
-    if ! sefx_android_timeout 8 cmd activity start-activity --user "$((rec_uid/100000))" -n "$SONY_PANEL" \
+    if sefx_android_timeout 8 cmd activity start-activity --user "$((rec_uid/100000))" -n "$SONY_PANEL" \
         -a android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL -c android.intent.category.DEFAULT \
         --es android.media.extra.PACKAGE_NAME "$rec_pkg" --ei android.media.extra.AUDIO_SESSION "$rec_sid" \
-        --ei android.media.extra.CONTENT_TYPE "$rec_type" > "$SEFX_RUN/panel.txt" 2>&1; then
-        sefx_error 'Sony panel launch failed.'; return 3
+        --ei android.media.extra.CONTENT_TYPE "$rec_type" > "$SEFX_RUN/panel.txt" 2>&1; then :
+    else
+        sefx_command_error "Sony panel launch failed (exit $?)." "$SEFX_RUN/panel.txt"; return 3
     fi
     if grep -Eiq 'error:|exception|permission denial|unable to resolve' "$SEFX_RUN/panel.txt"; then
-        cat "$SEFX_RUN/panel.txt" >&2; sefx_error 'Android rejected the Sony panel.'; return 3
+        sefx_command_error 'Android rejected the Sony panel.' "$SEFX_RUN/panel.txt"; return 3
     fi
     printf 'Panel opened for %s, session %s.\n' "$rec_pkg" "$rec_sid"
     printf 'Delivery is not proof of processing: compare flat vs a strong manual EQ cut.\n'
@@ -398,6 +483,10 @@ sefx_status() {
     printf 'Auto=%s, active=%ss, idle=%ss, refresh=%ss\n' "$SEFX_AUTO" "$SEFX_INTERVAL" "$SEFX_IDLE_INTERVAL" "$SEFX_REFRESH"
     printf '\nLast successfully requested sessions (not processing verification):\n'
     cat "$SEFX_STATE_DIR/attached.tsv" 2>/dev/null || true
+    printf '\nLast native evidence (may be stale; sefx health probes now):\n'
+    cat "$SEFX_STATE_DIR/engine-health.txt" 2>/dev/null || true
+    printf '\nRecovery cache: last-probe|bad-observations|attempts|next-repair|context-key\n'
+    cat "$SEFX_STATE_DIR/engine-recovery" 2>/dev/null || true
     printf '\nLive detection:\n'; sefx_collect || return $?
     cat "$SEFX_RUN/current.tsv"
 }
@@ -416,6 +505,9 @@ sefx_diagnostics() {
         printf 'SONY AUDIO DIAGNOSTICS - review before sharing\n'; date; sefx_status
         printf '\n--- EVENTS ---\n'; tail -n 120 "$SEFX_STATE_DIR/events.log" 2>/dev/null
         printf '\n--- LAST ANDROID INTENT ---\n'; cat "$SEFX_STATE_DIR/last-am.txt" 2>/dev/null
+        printf '\n--- LAST FAILED ANDROID COMMAND ---\n'; cat "$SEFX_STATE_DIR/last-command.txt" 2>/dev/null
+        printf '\n--- SONY NATIVE MODE ---\n'; sefx_android getprop ro.sony.global.effect
+        printf '\n--- ALL DETECTED PLAYERS ---\n'; cat "$SEFX_RUN/all-players.tsv" 2>/dev/null
         sefx_report_section 'SONY PACKAGE' dumpsys package "$SONY_PACKAGE"
         sefx_report_section 'APP OPS' appops get --user "$SEFX_USER" "$SONY_PACKAGE"
         sefx_report_section 'OTHER EFFECT PANELS' cmd package query-activities --brief -a android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL
@@ -436,7 +528,7 @@ sefx_diagnostics() {
         sefx_current_user || return $?
         report_dir=/storage/emulated/$SEFX_USER/Download
         [ -d "$report_dir" ] || { sefx_error 'Downloads unavailable; private report remains saved.'; return 3; }
-        report_target=$report_dir/SonyAudio-diagnostics-$(date +%Y%m%d-%H%M%S).txt
+        report_target=$report_dir/SonyAudio-diagnostics-$(date +%Y%m%d-%H%M%S)-$$.txt
         cp "$SEFX_STATE_DIR/diagnostics.txt" "$report_target" || return 3
         chmod 0644 "$report_target" || return 3
         printf 'Exported: %s\n' "$report_target"

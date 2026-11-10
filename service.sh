@@ -11,6 +11,10 @@ fi
 exec >> "$MODDIR/.sefx/boot.log" 2>&1
 printf 'Sony audio boot initialization\n'
 . "$MODDIR/sefx/lib.sh"
+trap sefx_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+sefx_init || exit $?
 sefx_ready || exit $?
 
 # Retain the Sony capability properties used by the previously working build.
@@ -67,10 +71,11 @@ done
 
 # RECORD_AUDIO is a real runtime permission. Do not use the invalid grant-all
 # command, change the user's Magisk denylist, or clear application settings.
-boot_user=$(sefx_android_timeout 6 cmd activity get-current-user 2>/dev/null)
-case "$boot_user" in ''|*[!0-9]*) printf 'Cannot determine Android user.\n'; exit 1 ;; esac
+sefx_current_user || exit 1
+boot_user=$SEFX_USER
 sefx_android_timeout 8 pm grant --user "$boot_user" com.sonyericsson.soundenhancement android.permission.RECORD_AUDIO || printf 'RECORD_AUDIO grant failed; inspect package permissions.\n'
 sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement SYSTEM_ALERT_WINDOW allow || printf 'Background/overlay app-op rejected.\n'
 sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_IN_BACKGROUND allow || printf 'Background/overlay app-op rejected.\n'
 sefx_android_timeout 8 appops set --user "$boot_user" com.sonyericsson.soundenhancement RUN_ANY_IN_BACKGROUND allow || printf 'Background/overlay app-op rejected.\n'
+sefx_cleanup
 exec sh "$MODDIR/system/bin/sefx" daemon

@@ -11,7 +11,7 @@ class AndroidFixture(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
         self.module=self.root/'module';self.module.mkdir()
-        for p in ['system/bin/sefx','sefx/lib.sh','sefx/evidence.sh','sefx/sessions.awk','module.prop']:
+        for p in ['system/bin/sefx','sefx/lib.sh','sefx/evidence.sh','sefx/sessions.awk','sefx/health.sh','sefx/engine.awk','module.prop']:
             q=self.module/p;q.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(REPO/p,q)
         self.bin=self.root/'bin';self.bin.mkdir()
         fake=self.root/'fake.py';shutil.copyfile(REPO/'tests/fake_android.py',fake);fake.chmod(0o755)
@@ -31,8 +31,9 @@ class AndroidFixture(unittest.TestCase):
     def config(self,text):
         tmp=self.state/'config.next';tmp.write_text(text);tmp.replace(self.state/'config')
     def runfx(self,*args,expected=0):
-        r=subprocess.run(['sh',str(self.module/'system/bin/sefx'),*args],env=self.env,text=True,capture_output=True,timeout=15)
+        r=subprocess.run(self.command(*args),env=self.env,text=True,capture_output=True,timeout=15)
         self.assertEqual(r.returncode,expected,r.stdout+r.stderr);return r
+    def command(self,*args):return ['sh',str(self.module/'system/bin/sefx'),*args]
     def calls(self,kind=None):
         p=self.root/'calls.jsonl';xs=[json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
         return [x for x in xs if kind is None or x[0]==kind]
@@ -104,8 +105,8 @@ class Sessions(AndroidFixture):
         self.android['packages']=f'package:{PLAYER} uid:1010123\npackage:{SONY} uid:1010077\n';self.save();self.runfx('attach');x=self.broadcasts('OPEN')[0];self.assertEqual(x[x.index('--user')+1],'10')
     def test_duplicate_track_session_opened_once(self):
         self.android['audio']+=record(piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),1)
-    def test_two_sessions_opened_individually(self):
-        self.android['audio']+=record(sid=78,piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),2)
+    def test_two_sessions_use_one_sony_package_holder(self):
+        self.android['audio']+=record(sid=78,piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),1)
     def test_stable_automatic_poll_does_not_spam(self):
         self.runfx('sync');self.clearcalls();self.runfx('sync');self.assertFalse(self.broadcasts())
     def test_new_session_closes_old_then_opens_new(self):
