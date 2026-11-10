@@ -29,10 +29,17 @@ clear data or make SELinux permissive to recover playback.
 Sony's APK has one holder per package. RC5 retains one stable active record per
 package, and replaces it when it disappears. All detected records remain in
 diagnostics. This avoids repeatedly replacing one package's holder while
-pretending its concurrent sessions are independently supported. In global mode it additionally retains one active package owner, so Sony's own holders do not contend for the shared engine. `sefx open PACKAGE`
+pretending its concurrent sessions are independently supported. In global mode
+it additionally retains one active package owner to avoid creating competing
+holders through the manager. `sefx open PACKAGE`
 explicitly selects another active player; otherwise the owner stays stable
 until it stops. This is one global profile for the mixed output. In
 postprocess mode one holder per active package is retained.
+
+Players can also send OPEN/CLOSE broadcasts directly to Sony's APK. The manager
+does not intercept those broadcasts or prove which Java holder owns an engine
+when several holders belong to Sony's same process. Multiple-player behavior
+therefore still needs device testing; PID ownership alone cannot resolve it.
 
 ## Install
 
