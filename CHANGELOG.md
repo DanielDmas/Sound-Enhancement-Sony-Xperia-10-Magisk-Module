@@ -1,3 +1,12 @@
+# v2.0.0-rc.5
+
+- Check native Sony engine evidence, independently of broadcast delivery.
+- Repair repeatedly missing/failed engines with startup grace, cooldown and a three-attempt budget.
+- Preserve user-disabled effects; suppress automatic takeover for conflict/suspension/unknown evidence.
+- Retain one active session per package to match Sony's actual holder model.
+- Add read-only `sefx health`, native mode/recovery diagnostics and adversarial regressions.
+- Retain RC4 command transport and all protected proprietary binaries. Hardware acceptance remains pending.
+
 # Changelog
 
 ## v2.0.0-rc.4

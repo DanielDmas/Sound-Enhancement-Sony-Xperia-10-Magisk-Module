@@ -89,5 +89,5 @@ def build(output,root=ROOT):
     return {'path':str(output),'bytes':output.stat().st_size,'sha256':digest,'files':len(files),'protected_payloads_verified':protected,'hardware_tested':False}
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--output',default=str(ROOT/'dist/SoundEnhancement-v2.0.0-rc.4-lilac-12L.zip'))
+    parser=argparse.ArgumentParser();parser.add_argument('--output',default=str(ROOT/'dist/SoundEnhancement-v2.0.0-rc.5-lilac-12L.zip'))
     print(json.dumps(build(parser.parse_args().output),indent=2))

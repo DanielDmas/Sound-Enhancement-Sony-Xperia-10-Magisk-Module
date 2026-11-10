@@ -4,7 +4,8 @@ SONY_PACKAGE=com.sonyericsson.soundenhancement
 SONY_RECEIVER=$SONY_PACKAGE/.AudioEffectControlReceiver
 SONY_PANEL=$SONY_PACKAGE/.SoundEnhancementRedirector
 . "$MODDIR/sefx/evidence.sh"
-SEFX_RUNTIME_VERSION=v2.0.0-rc.4
+. "$MODDIR/sefx/health.sh"
+SEFX_RUNTIME_VERSION=v2.0.0-rc.5
 SEFX_STATE_DIR=${SEFX_STATE_DIR:-/data/adb/sony-audio-manager}
 SEFX_PROC_DIR=${SEFX_PROC_DIR:-/proc}
 SEFX_LOCK_HELD=0
@@ -101,7 +102,7 @@ sefx_init() {
     [ ! -L "$SEFX_STATE_DIR" ] || { printf 'Refusing symlink state directory.\n' >&2; return 1; }
     mkdir -p "$SEFX_STATE_DIR" || return 1
     chmod 0700 "$SEFX_STATE_DIR" || return 1
-    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt last-command.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt unresolved-uids; do
+    for state_file in config events.log events.previous.log attached.tsv context refreshed_at detected.tsv last-am.txt last-command.txt diagnostics.txt attach.flock watch.flock watch.pid watch.token heartbeat daemon.flock daemon.pid daemon.token daemon.log last-poll.txt unresolved-uids engine-health.txt engine-recovery; do
         if [ -L "$SEFX_STATE_DIR/$state_file" ] || [ -d "$SEFX_STATE_DIR/$state_file" ]; then
             printf 'Refusing unsafe state file: %s\n' "$state_file" >&2; return 3
         fi
@@ -215,6 +216,24 @@ sefx_collect() {
         sefx_error 'Session parser failed.'; return 3
     fi
     LC_ALL=C sort -u "$SEFX_RUN/parsed.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    # Sony keeps one holder per package. Keep the previously selected active
+    # record if possible, then choose one deterministic replacement. Opening
+    # every concurrent ID just replaces that package's native holder repeatedly.
+    cp "$SEFX_RUN/current.tsv" "$SEFX_RUN/all-players.tsv" || return 3
+    [ -f "$SEFX_STATE_DIR/attached.tsv" ] || : > "$SEFX_RUN/previous-empty"
+    collect_previous=$SEFX_STATE_DIR/attached.tsv
+    [ -f "$collect_previous" ] || collect_previous=$SEFX_RUN/previous-empty
+    awk -F'|' 'FILENAME==ARGV[1] {old[$0]=1;next} {if (!($1 in first)) {first[$1]=$0;order[++n]=$1} if ($0 in old) preferred[$1]=$0} END {for(i=1;i<=n;i++) {p=order[i];print (p in preferred ? preferred[p] : first[p])}}' \
+        "$collect_previous" "$SEFX_RUN/all-players.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    # Global mode has one shared engine. Several Sony package holders would
+    # compete for control of it, even though every handle belongs to Sony's PID.
+    # Keep one active owner; explicit `open PKG` can switch that owner.
+    collect_mode=$(sefx_android getprop ro.sony.global.effect 2>/dev/null)
+    if [ "$collect_mode" = true ]; then
+        cp "$SEFX_RUN/current.tsv" "$SEFX_RUN/package-players.tsv" || return 3
+        awk -F'|' -v selected="${SEFX_PREFERRED_PACKAGE:-}" 'FILENAME==ARGV[1] {old[$1]=1;next} {if(!n++) first=$0; if($1 in old && !keep) keep=$0; if($1==selected) explicit=$0} END {if(n) print (explicit ? explicit : (keep ? keep : first))}' \
+            "$collect_previous" "$SEFX_RUN/package-players.tsv" > "$SEFX_RUN/current.tsv" || return 3
+    fi
     if [ -s "$SEFX_RUN/unresolved" ]; then
         printf 'Active media has an unresolved session/owner; preserving that UID\047s prior attachments. No global-session fallback is guessed.\n'
         [ -s "$SEFX_RUN/current.tsv" ] || return 4
@@ -278,6 +297,15 @@ sefx_sync() {
     case "$sync_last" in 0|[1-9]*) ;; *) sync_last=0; sync_time_valid=0 ;; esac
     sync_force=0
     if [ "$sync_time_valid" = 0 ] || [ "$sync_mode" != auto ] || [ "$sync_context" != "$sync_before" ] || [ "$sync_stamp" -lt "$sync_last" ] || [ "$((sync_stamp-sync_last))" -ge "$SEFX_REFRESH" ]; then sync_force=1; fi
+    if [ "$sync_mode" = auto ] && [ -s "$SEFX_RUN/current.tsv" ]; then
+        sefx_health_decide "$sync_context" "$sync_before" "$sync_stamp" || { sefx_release_lock; return 3; }
+        [ "$HEALTH_REPAIR" != 1 ] || { sync_mode=repair; sync_force=1; }
+    elif [ "$sync_mode" = repair ]; then
+        # An explicit user repair starts a new bounded automatic-recovery budget.
+        rm -f "$SEFX_STATE_DIR/engine-recovery"
+    elif [ ! -s "$SEFX_RUN/current.tsv" ]; then
+        rm -f "$SEFX_STATE_DIR/engine-recovery" "$SEFX_STATE_DIR/engine-health.txt"
+    fi
     sync_result=0; sync_sent=0
     : > "$SEFX_RUN/closed-packages.txt"
     : > "$SEFX_RUN/failed-packages.txt"
@@ -455,6 +483,10 @@ sefx_status() {
     printf 'Auto=%s, active=%ss, idle=%ss, refresh=%ss\n' "$SEFX_AUTO" "$SEFX_INTERVAL" "$SEFX_IDLE_INTERVAL" "$SEFX_REFRESH"
     printf '\nLast successfully requested sessions (not processing verification):\n'
     cat "$SEFX_STATE_DIR/attached.tsv" 2>/dev/null || true
+    printf '\nLast native evidence (may be stale; sefx health probes now):\n'
+    cat "$SEFX_STATE_DIR/engine-health.txt" 2>/dev/null || true
+    printf '\nRecovery cache: last-probe|bad-observations|attempts|next-repair|context-key\n'
+    cat "$SEFX_STATE_DIR/engine-recovery" 2>/dev/null || true
     printf '\nLive detection:\n'; sefx_collect || return $?
     cat "$SEFX_RUN/current.tsv"
 }
@@ -474,6 +506,8 @@ sefx_diagnostics() {
         printf '\n--- EVENTS ---\n'; tail -n 120 "$SEFX_STATE_DIR/events.log" 2>/dev/null
         printf '\n--- LAST ANDROID INTENT ---\n'; cat "$SEFX_STATE_DIR/last-am.txt" 2>/dev/null
         printf '\n--- LAST FAILED ANDROID COMMAND ---\n'; cat "$SEFX_STATE_DIR/last-command.txt" 2>/dev/null
+        printf '\n--- SONY NATIVE MODE ---\n'; sefx_android getprop ro.sony.global.effect
+        printf '\n--- ALL DETECTED PLAYERS ---\n'; cat "$SEFX_RUN/all-players.tsv" 2>/dev/null
         sefx_report_section 'SONY PACKAGE' dumpsys package "$SONY_PACKAGE"
         sefx_report_section 'APP OPS' appops get --user "$SEFX_USER" "$SONY_PACKAGE"
         sefx_report_section 'OTHER EFFECT PANELS' cmd package query-activities --brief -a android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL
@@ -494,7 +528,7 @@ sefx_diagnostics() {
         sefx_current_user || return $?
         report_dir=/storage/emulated/$SEFX_USER/Download
         [ -d "$report_dir" ] || { sefx_error 'Downloads unavailable; private report remains saved.'; return 3; }
-        report_target=$report_dir/SonyAudio-diagnostics-$(date +%Y%m%d-%H%M%S).txt
+        report_target=$report_dir/SonyAudio-diagnostics-$(date +%Y%m%d-%H%M%S)-$$.txt
         cp "$SEFX_STATE_DIR/diagnostics.txt" "$report_target" || return 3
         chmod 0644 "$report_target" || return 3
         printf 'Exported: %s\n' "$report_target"

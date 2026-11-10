@@ -47,7 +47,7 @@ if name=='dumpsys':
   if state.get('dump_fail'):finish('Audio service unavailable',1)
   finish(state.get('audio','PlaybackActivityMonitor dump time: test\n  players:\n'))
  if args and args[0]=='package':finish('Sony package fixture')
- if args==['media.audio_flinger']:finish('AudioFlinger fixture: no physical processing measurement')
+ if args==['media.audio_flinger']:finish(state.get('flinger','AudioFlinger fixture: no physical processing measurement'),state.get('flinger_exit',0))
  if args==['media_session']:finish('No media-session notification is required for audio ownership.')
 if name=='cmd':
  if args==['package','query-activities','--brief','-a','android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL']:

@@ -11,7 +11,7 @@ class AndroidFixture(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
         self.module=self.root/'module';self.module.mkdir()
-        for p in ['system/bin/sefx','sefx/lib.sh','sefx/evidence.sh','sefx/sessions.awk','module.prop']:
+        for p in ['system/bin/sefx','sefx/lib.sh','sefx/evidence.sh','sefx/sessions.awk','sefx/health.sh','sefx/engine.awk','module.prop']:
             q=self.module/p;q.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(REPO/p,q)
         self.bin=self.root/'bin';self.bin.mkdir()
         fake=self.root/'fake.py';shutil.copyfile(REPO/'tests/fake_android.py',fake);fake.chmod(0o755)
@@ -105,8 +105,8 @@ class Sessions(AndroidFixture):
         self.android['packages']=f'package:{PLAYER} uid:1010123\npackage:{SONY} uid:1010077\n';self.save();self.runfx('attach');x=self.broadcasts('OPEN')[0];self.assertEqual(x[x.index('--user')+1],'10')
     def test_duplicate_track_session_opened_once(self):
         self.android['audio']+=record(piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),1)
-    def test_two_sessions_opened_individually(self):
-        self.android['audio']+=record(sid=78,piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),2)
+    def test_two_sessions_use_one_sony_package_holder(self):
+        self.android['audio']+=record(sid=78,piid=11);self.save();self.runfx('attach');self.assertEqual(len(self.broadcasts('OPEN')),1)
     def test_stable_automatic_poll_does_not_spam(self):
         self.runfx('sync');self.clearcalls();self.runfx('sync');self.assertFalse(self.broadcasts())
     def test_new_session_closes_old_then_opens_new(self):

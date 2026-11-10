@@ -28,7 +28,7 @@ class Package(unittest.TestCase):
     def test_module_identity_is_an_upgrade_not_a_second_module(self):
         with zipfile.ZipFile(self.out) as z:
             self.assertIn('id=SoundEnhancement\n',z.read('module.prop').decode())
-            self.assertIn('versionCode=20004\n',z.read('module.prop').decode())
+            self.assertIn('versionCode=20005\n',z.read('module.prop').decode())
     def test_critical_executables_have_executable_mode(self):
         with zipfile.ZipFile(self.out) as z:
             for name in ['system/bin/sefx','action.sh','service.sh','META-INF/com/google/android/update-binary']:
