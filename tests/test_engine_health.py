@@ -47,6 +47,7 @@ class EngineParser(unittest.TestCase):
     def test_missing_effect_body_is_unknown(self):self.assertEqual(self.parse(HEADER+'1 effects for session 0\n'),'unknown')
     def test_broken_session_row_is_unknown(self):self.assertEqual(self.parse(HEADER+effect().replace('00000   004','broken row')),'unknown')
     def test_lock_failure_is_unknown(self):self.assertEqual(self.parse(HEADER+effect()+'Could not lock mutex:\n'),'unknown')
+    def test_thread_lock_failure_is_unknown(self):self.assertEqual(self.parse(HEADER+effect()+'Thread may be deadlocked\n'),'unknown')
     def test_unsupported_format_is_unknown(self):self.assertEqual(self.parse('Sony enabled '+UUID),'unknown')
     def test_all_expected_sessions_required(self):self.assertEqual(self.parse(HEADER+effect(session=77),'77,78'),'missing')
     def test_hal_dump_cannot_supply_control_table(self):

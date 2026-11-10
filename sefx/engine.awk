@@ -21,7 +21,7 @@ BEGIN {
     n=split(sessions, ids, ","); for (i=1;i<=n;i++) if (ids[i] ~ /^[0-9]+$/) wanted[ids[i]+0]=1
     reset()
 }
-/Could not lock|[Tt]imed out|[Pp]ermission [Dd]enial|[Ff]ailed to dump/ { incomplete=1 }
+/Could not lock|[Dd]eadlocked|[Tt]imed out|[Pp]ermission [Dd]enial|[Ff]ailed to dump/ { incomplete=1 }
 /^[[:space:]]*Output thread / { output_seen=1 }
 /^[[:space:]]*[0-9]+ Effect Chains[[:space:]]*$/ { chains_seen=1; declared_chains+=$1 }
 /^[[:space:]]*[0-9]+ effects for session -?[0-9]+[[:space:]]*$/ { parsed_chains++; declared_effects+=$1 }
